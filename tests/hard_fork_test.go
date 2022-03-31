@@ -35,7 +35,6 @@ import (
 	"github.com/klaytn/klaytn/common/profile"
 	"github.com/klaytn/klaytn/consensus/istanbul"
 	"github.com/klaytn/klaytn/crypto"
-	"github.com/klaytn/klaytn/governance"
 	"github.com/klaytn/klaytn/params"
 	"github.com/klaytn/klaytn/rlp"
 	"github.com/klaytn/klaytn/storage/database"
@@ -91,9 +90,9 @@ func TestHardForkBlock(t *testing.T) {
 		os.RemoveAll(dir)
 	}()
 
-	gov := generateGovernaceDataForTest()
 	chainConfig, _, err := blockchain.SetupGenesisBlock(chainDb, &genesis, params.UnusedNetworkId, false, false)
-	governance.AddGovernanceCacheForTest(gov, 0, genesis.Config)
+	gov := generateGovernaceDataForTest()
+	gov.AddGovernanceCacheForTest(0, genesis.Config)
 	engine := istanbulBackend.New(genesisAddr, istanbul.DefaultConfig, genesisKey, chainDb, gov, common.CONSENSUSNODE)
 	chain, err := blockchain.NewBlockChain(chainDb, nil, chainConfig, engine, vm.Config{})
 

@@ -751,6 +751,11 @@ func (g *Governance) addGovernanceCache(num uint64, data GovernanceSet) {
 	}
 }
 
+func (gov *Governance) AddGovernanceCacheForTest(num uint64, config *params.ChainConfig) {
+	data := GetGovernanceItemsFromChainConfig(config)
+	gov.addGovernanceCache(num, data)
+}
+
 // getGovernanceCacheKey returns cache key of the given block number
 func getGovernanceCacheKey(num uint64) common.GovernanceCacheKey {
 	v := fmt.Sprintf("%v", num)
@@ -1091,13 +1096,6 @@ func GetGovernanceItemsFromChainConfig(config *params.ChainConfig) GovernanceSet
 func writeFailLog(key int, err error) {
 	msg := "Failed to set " + GovernanceKeyMapReverse[key]
 	logger.Crit(msg, "err", err)
-}
-
-func AddGovernanceCacheForTest(g *Governance, num uint64, config *params.ChainConfig) {
-	// Don't update cache if num (block number) is smaller than the biggest number of cached block number
-
-	data := GetGovernanceItemsFromChainConfig(config)
-	g.addGovernanceCache(num, data)
 }
 
 func (gov *Governance) GovernanceMode() string {
