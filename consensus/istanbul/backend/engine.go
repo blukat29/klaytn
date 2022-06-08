@@ -170,6 +170,7 @@ func (sb *backend) computeSignatureAddrs(header *types.Header) error {
 // given engine. Verifying the seal may be done optionally here, or explicitly
 // via the VerifySeal method.
 func (sb *backend) VerifyHeader(chain consensus.ChainReader, header *types.Header, seal bool) error {
+	logger.Info("ZZZZZZZZZZ VerifyHeader", "num", header.Number.Uint64())
 	return sb.verifyHeader(chain, header, nil)
 }
 
@@ -263,6 +264,7 @@ func (sb *backend) verifySigner(chain consensus.ChainReader, header *types.Heade
 	}
 
 	// Retrieve the snapshot needed to verify this header and cache it
+	logger.Info("..ZZZZZZZZ verifySigner", "num", number)
 	snap, err := sb.snapshot(chain, number-1, header.ParentHash, parents)
 	if err != nil {
 		return err
@@ -290,6 +292,7 @@ func (sb *backend) verifyCommittedSeals(chain consensus.ChainReader, header *typ
 	}
 
 	// Retrieve the snapshot needed to verify this header and cache it
+	logger.Info("..ZZZZZZZZ verifyCommittedSeals", "num", number)
 	snap, err := sb.snapshot(chain, number-1, header.ParentHash, parents)
 	if err != nil {
 		return err
@@ -345,6 +348,7 @@ func (sb *backend) VerifySeal(chain consensus.ChainReader, header *types.Header)
 	if header.BlockScore.Cmp(defaultBlockScore) != 0 {
 		return errInvalidBlockScore
 	}
+	logger.Info("ZZZZZZZZZZ VerifySeal", "num", header.Number.Uint64())
 	return sb.verifySigner(chain, header, nil)
 }
 
@@ -364,6 +368,7 @@ func (sb *backend) Prepare(chain consensus.ChainReader, header *types.Header) er
 	header.BlockScore = defaultBlockScore
 
 	// Assemble the voting snapshot
+	logger.Info("ZZZZZZZZZZ Prepare", "num", number)
 	snap, err := sb.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return err
@@ -452,6 +457,7 @@ func (sb *backend) Finalize(chain consensus.ChainReader, header *types.Header, s
 	}
 
 	header.Root = state.IntermediateRoot(true)
+	logger.Info("ZZZZZZZZZZ Finalize", "num", header.Number.Uint64())
 
 	// Assemble and return the final block for sealing
 	return types.NewBlock(header, txs, receipts), nil
@@ -465,6 +471,7 @@ func (sb *backend) Seal(chain consensus.ChainReader, block *types.Block, stop <-
 	number := header.Number.Uint64()
 
 	// Bail out if we're unauthorized to sign a block
+	logger.Info("ZZZZZZZZZZ Seal", "num", number)
 	snap, err := sb.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return nil, err
@@ -656,6 +663,7 @@ func getPrevHeaderAndUpdateParents(chain consensus.ChainReader, number uint64, h
 
 // CreateSnapshot does not return a snapshot but creates a new snapshot at a given point in time.
 func (sb *backend) CreateSnapshot(chain consensus.ChainReader, number uint64, hash common.Hash, parents []*types.Header) error {
+	logger.Info("ZZZZZZZZZZ CreateSnapshot", "num", number, "parents", len(parents))
 	_, err := sb.snapshot(chain, number, hash, parents)
 	return err
 }
@@ -667,6 +675,7 @@ func (sb *backend) snapshot(chain consensus.ChainReader, number uint64, hash com
 		headers []*types.Header
 		snap    *Snapshot
 	)
+	logger.Info("....ZZZZZZ snapshot()", "num", number, "headNum", chain.CurrentHeader().Number.Uint64())
 
 	for snap == nil {
 		// If an in-memory snapshot was found, use that

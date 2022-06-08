@@ -149,6 +149,7 @@ func (s *Snapshot) apply(headers []*types.Header, gov governance.Engine, addr co
 	if len(headers) == 0 {
 		return s, nil
 	}
+	logger.Info("......ZZZZ apply() with nonempty []headers", "headers", len(headers), "headNum", chain.CurrentHeader().Number.Uint64())
 	// Sanity check that the headers can be applied
 	for i := 0; i < len(headers)-1; i++ {
 		if headers[i+1].Number.Uint64() != headers[i].Number.Uint64()+1 {
@@ -179,8 +180,10 @@ func (s *Snapshot) apply(headers []*types.Header, gov governance.Engine, addr co
 		}
 
 		if number%snap.Epoch == 0 {
+			logger.Info("........ZZ UpdateCurrentSet", "num", number)
 			gov.UpdateCurrentSet(number)
 			if len(header.Governance) > 0 {
+				logger.Info("........ZZ WriteGovernanceForNextEpoch", "num", number)
 				gov.WriteGovernanceForNextEpoch(number, header.Governance)
 			}
 			gov.ClearVotes(number)
