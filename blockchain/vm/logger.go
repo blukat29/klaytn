@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sync/atomic"
 	"time"
 
 	"github.com/klaytn/klaytn/blockchain/types"
@@ -120,6 +121,9 @@ type StructLogger struct {
 	changedValues map[common.Address]Storage
 	output        []byte
 	err           error
+
+	interrupt uint32
+	reason    error
 }
 
 // NewStructLogger returns a new logger
@@ -133,6 +137,12 @@ func NewStructLogger(cfg *LogConfig) *StructLogger {
 	return logger
 }
 
+// Stop terminates execution of the tracer at the first opportune moment.
+func (l *StructLogger) Stop(err error) {
+	l.reason = err
+	atomic.StoreUint32(&l.interrupt, 1)
+}
+
 // CaptureStart implements the Tracer interface to initialize the tracing operation.
 func (l *StructLogger) CaptureStart(from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) error {
 	return nil
@@ -142,6 +152,10 @@ func (l *StructLogger) CaptureStart(from common.Address, to common.Address, crea
 //
 // CaptureState also tracks SSTORE ops to track dirty values.
 func (l *StructLogger) CaptureState(env *EVM, pc uint64, op OpCode, gas, cost uint64, memory *Memory, stack *Stack, contract *Contract, depth int, err error) error {
+	// If tracing was interrupted, set the error and stop
+	if atomic.LoadUint32(&l.interrupt) > 0 {
+		return l.reason
+	}
 	// check if already accumulated the specified number of logs
 	if l.cfg.Limit != 0 && l.cfg.Limit <= len(l.logs) {
 		return ErrTraceLimitReached
