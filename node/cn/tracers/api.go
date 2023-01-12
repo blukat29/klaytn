@@ -803,14 +803,6 @@ func (api *API) traceTx(ctx context.Context, message blockchain.Message, vmctx v
 	)
 	switch {
 	case config != nil && config.Tracer != nil:
-		// Define a meaningful timeout of a single transaction trace
-		timeout := defaultTraceTimeout
-		if config.Timeout != nil {
-			if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
-				return nil, err
-			}
-		}
-
 		if *config.Tracer == fastCallTracer {
 			tracer = vm.NewInternalTxTracer()
 		} else {
@@ -819,29 +811,39 @@ func (api *API) traceTx(ctx context.Context, message blockchain.Message, vmctx v
 				return nil, err
 			}
 		}
-		// Handle timeouts and RPC cancellations
-		deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
-		go func() {
-			<-deadlineCtx.Done()
-			if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
-				switch t := tracer.(type) {
-				case *Tracer:
-					t.Stop(errors.New("execution timeout"))
-				case *vm.InternalTxTracer:
-					t.Stop(errors.New("execution timeout"))
-				default:
-					logger.Warn("unknown tracer type", "type", reflect.TypeOf(t).String())
-				}
-			}
-		}()
-		defer cancel()
-
 	case config == nil:
 		tracer = vm.NewStructLogger(nil)
-
 	default:
 		tracer = vm.NewStructLogger(config.LogConfig)
 	}
+
+	// Define a meaningful timeout of a single transaction trace
+	timeout := defaultTraceTimeout
+	if config != nil && config.Timeout != nil {
+		if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
+			return nil, err
+		}
+	}
+
+	// Handle timeouts and RPC cancellations
+	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+	go func() {
+		<-deadlineCtx.Done()
+		if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
+			switch t := tracer.(type) {
+			case *vm.InternalTxTracer:
+				t.Stop(errors.New("execution timeout"))
+			case *Tracer:
+				t.Stop(errors.New("execution timeout"))
+			case *vm.StructLogger:
+				t.Stop(errors.New("execution timeout"))
+			default:
+				logger.Warn("unknown tracer type", "type", reflect.TypeOf(t).String())
+			}
+		}
+	}()
+	defer cancel()
+
 	// Run the transaction with tracing enabled.
 	vmenv := vm.NewEVM(vmctx, statedb, api.backend.ChainConfig(), &vm.Config{Debug: true, Tracer: tracer, UseOpcodeComputationCost: true})
 
