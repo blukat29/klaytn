@@ -22,9 +22,38 @@ package common
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
+
+	"github.com/klaytn/klaytn/common/hexutil"
+	"github.com/stretchr/testify/assert"
+)
+
+// Make sure Hash and ExtHash both implement similar interfaces
+type hashLike interface {
+	Bytes() []byte
+	Hex() string
+
+	String() string
+	TerminalString() string
+	Format(s fmt.State, c rune)
+	MarshalText() ([]byte, error)
+
+	getShardIndex(shardMask int) int
+}
+
+type hashPtrLike interface {
+	UnmarshalText(input []byte) error
+	UnmarshalJSON(input []byte) error
+}
+
+var (
+	_ hashLike    = Hash{}
+	_ hashLike    = ExtHash{}
+	_ hashPtrLike = &Hash{}
+	_ hashPtrLike = &ExtHash{}
 )
 
 func TestBytesConversion(t *testing.T) {
@@ -37,6 +66,54 @@ func TestBytesConversion(t *testing.T) {
 	if hash != exp {
 		t.Errorf("expected %x got %x", exp, hash)
 	}
+}
+
+func TestExtHash(t *testing.T) {
+	var (
+		sHash      = "0x1122334411223344112233441122334411223344112233441122334411223344"
+		nNonce     = uint64(0xccccdddd0001)
+		sNonce     = "0xccccdddd0001"
+		sExtHash   = "0x1122334411223344112233441122334411223344112233441122334411223344ccccdddd0001"
+		sExtRoot   = "0x1122334411223344112233441122334411223344112233441122334411223344000000000011"
+		sExtLegacy = "0x1122334411223344112233441122334411223344112233441122334411223344000000000045"
+		sEmptyRoot = "0x0000000000000000000000000000000000000000000000000000000000000000000000000011"
+		bHash      = hexutil.MustDecode(sHash)
+		bNonce     = hexutil.MustDecode(sNonce)
+		bExtHash   = hexutil.MustDecode(sExtHash)
+	)
+
+	h := BytesToHash(bHash)
+	nonce := BytesToExtNonce(bNonce)
+	eh := h.extend(nonce)
+
+	// ExtHash methods
+	assert.Equal(t, bExtHash, eh.Bytes())
+	assert.Equal(t, sExtHash, eh.Hex())
+	assert.Equal(t, nonce, eh.Nonce())
+	assert.Equal(t, sExtLegacy, BytesToExtHash(bHash).Hex())
+	assert.Equal(t, sExtHash, BytesToExtHash(bExtHash).Hex())
+
+	// Hash <-> ExtHash
+	assert.Equal(t, h, eh.Unextend())
+	assert.Equal(t, sExtRoot, h.ExtendRoot().Hex())
+	assert.Equal(t, sExtLegacy, h.ExtendLegacy().Hex())
+	assert.Equal(t, sEmptyRoot, Hash{}.ExtendRoot().Hex())
+
+	// Value tests
+	assert.False(t, eh.IsRoot())
+	assert.False(t, eh.IsLegacy())
+	assert.True(t, h.ExtendRoot().IsRoot())
+	assert.True(t, h.ExtendLegacy().IsLegacy())
+
+	assert.False(t, EmptyExtHash(eh))
+	assert.True(t, EmptyExtHash(Hash{}.ExtendRoot()))
+	assert.True(t, EmptyExtHash(Hash{}.ExtendLegacy()))
+	assert.True(t, EmptyExtHash(ExtHash{}))
+
+	// Reset counter
+	ResetExtHashCounter(nNonce - 1)
+	eh = BytesToHash(bHash).Extend()
+	assert.Equal(t, sExtHash, eh.Hex())
 }
 
 func TestIsHexAddress(t *testing.T) {
