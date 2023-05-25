@@ -64,10 +64,10 @@ type nodeRequest struct {
 	path []byte      // Merkle path leading to this node for prioritization
 	data []byte      // Data content of the node, cached until all subtrees complete
 
-	parent   *nodeRequest // Parent state node referencing this entry
-	depth    int          // Depth level within the trie the node is located to prioritise DFS
-	deps     int          // Number of dependencies before allowed to commit this node
-	callback LeafCallback // Callback to invoke if a leaf node it reached on this branch
+	parents  []*nodeRequest // Parent state node referencing this entry
+	depth    int            // Depth level within the trie the node is located to prioritise DFS
+	deps     int            // Number of dependencies before allowed to commit this node
+	callback LeafCallback   // Callback to invoke if a leaf node it reached on this branch
 }
 
 // codeRequest represents a scheduled or already in-flight bytecode retrieval request.
@@ -168,16 +168,16 @@ type StateTrieReadDB interface {
 // unknown trie hashes to retrieve, accepts node data associated with said hashes
 // and reconstructs the trie step by step until all is done.
 type TrieSync struct {
-	database         StateTrieReadDB          // Persistent database to check for existing entries
-	membatch         *syncMemBatch            // Memory buffer to avoid frequent database writes
-	nodeReqs         map[common.Hash]*request // Pending requests pertaining to a trie node hash
-	codeReqs         map[common.Hash]*request // Pending requests pertaining to a code hash
-	queue            *prque.Prque             // Priority queue with the pending requests
-	fetches          map[int]int              // Number of active fetches per trie node depth
-	retrievedByDepth map[int]int              // Retrieved trie node number counted by depth
-	committedByDepth map[int]int              // Committed trie nodes number counted by depth
-	bloom            *SyncBloom               // Bloom filter for fast state existence checks
-	exist            *lru.Cache               // exist to check if the trie node is already written or not
+	database         StateTrieReadDB              // Persistent database to check for existing entries
+	membatch         *syncMemBatch                // Memory buffer to avoid frequent database writes
+	nodeReqs         map[common.Hash]*nodeRequest // Pending requests pertaining to a trie node hash
+	codeReqs         map[common.Hash]*codeRequest // Pending requests pertaining to a code hash
+	queue            *prque.Prque                 // Priority queue with the pending requests
+	fetches          map[int]int                  // Number of active fetches per trie node depth
+	retrievedByDepth map[int]int                  // Retrieved trie node number counted by depth
+	committedByDepth map[int]int                  // Committed trie nodes number counted by depth
+	bloom            *SyncBloom                   // Bloom filter for fast state existence checks
+	exist            *lru.Cache                   // exist to check if the trie node is already written or not
 }
 
 // NewTrieSync creates a new trie data download scheduler.
@@ -186,8 +186,8 @@ func NewTrieSync(root common.Hash, database StateTrieReadDB, callback LeafCallba
 	ts := &TrieSync{
 		database:         database,
 		membatch:         newSyncMemBatch(),
-		nodeReqs:         make(map[common.Hash]*request),
-		codeReqs:         make(map[common.Hash]*request),
+		nodeReqs:         make(map[common.Hash]*nodeRequest),
+		codeReqs:         make(map[common.Hash]*codeRequest),
 		queue:            prque.New(),
 		fetches:          make(map[int]int),
 		retrievedByDepth: make(map[int]int),
@@ -225,7 +225,7 @@ func (s *TrieSync) AddSubTrie(root common.Hash, path []byte, depth int, parent c
 		bloomFaultMeter.Mark(1)
 	}
 	// Assemble the new sub-trie sync request
-	req := &request{
+	req := &nodeRequest{
 		path:     path,
 		hash:     root,
 		depth:    depth,
@@ -240,7 +240,7 @@ func (s *TrieSync) AddSubTrie(root common.Hash, path []byte, depth int, parent c
 		ancestor.deps++
 		req.parents = append(req.parents, ancestor)
 	}
-	s.schedule(req)
+	s.scheduleNodeRequest(req)
 }
 
 // AddCodeEntry schedules the direct retrieval of a contract code that should not
@@ -274,10 +274,9 @@ func (s *TrieSync) AddCodeEntry(hash common.Hash, path []byte, depth int, parent
 		bloomFaultMeter.Mark(1)
 	}
 	// Assemble the new sub-trie sync request
-	req := &request{
+	req := &codeRequest{
 		path:  path,
 		hash:  hash,
-		code:  true,
 		depth: depth,
 	}
 	// If this sub-trie has a designated parent, link them together
@@ -289,7 +288,7 @@ func (s *TrieSync) AddCodeEntry(hash common.Hash, path []byte, depth int, parent
 		ancestor.deps++
 		req.parents = append(req.parents, ancestor)
 	}
-	s.schedule(req)
+	s.scheduleCodeRequest(req)
 }
 
 // Missing retrieves the known missing nodes from the trie for retrieval. To aid
@@ -331,6 +330,57 @@ func (s *TrieSync) Missing(max int) (nodes []common.Hash, paths []SyncPath, code
 // is same). In this case the second response for the same hash will
 // be treated as "non-requested" item or "already-processed" item but
 // there is no downside.
+func (s *TrieSync) ProcessNode(result NodeSyncResult) error {
+	// If the trie node was not requested or it's already processed, bail out
+	req := s.nodeReqs[result.Hash]
+	if req == nil {
+		return ErrNotRequested
+	}
+	if req.data != nil {
+		return ErrAlreadyProcessed
+	}
+	// Decode the node data content and update the request
+	node, err := decodeNode(result.Hash[:], result.Data)
+	if err != nil {
+		return err
+	}
+	req.data = result.Data
+
+	// Create and schedule a request for all the children nodes
+	requests, err := s.children(req, node)
+	if err != nil {
+		return err
+	}
+	if len(requests) == 0 && req.deps == 0 {
+		s.commitNodeRequest(req)
+	} else {
+		req.deps += len(requests)
+		for _, child := range requests {
+			s.scheduleNodeRequest(child)
+		}
+	}
+	return nil
+}
+
+// Process injects the received data for requested item. Note it can
+// happen that the single response commits two pending requests(e.g.
+// there are two requests one for code and one for node but the hash
+// is same). In this case the second response for the same hash will
+// be treated as "non-requested" item or "already-processed" item but
+// there is no downside.
+func (s *TrieSync) ProcessCode(result CodeSyncResult) error {
+	// If the code was not requested or it's already processed, bail out
+	req := s.codeReqs[result.Hash]
+	if req == nil {
+		return ErrNotRequested
+	}
+	if req.data != nil {
+		return ErrAlreadyProcessed
+	}
+	req.data = result.Data
+	return s.commitCodeRequest(req)
+}
+
 func (s *TrieSync) Process(result SyncResult) error {
 	// If the item was not requested either for code or node, bail out
 	if s.nodeReqs[result.Hash] == nil && s.codeReqs[result.Hash] == nil {
@@ -341,7 +391,7 @@ func (s *TrieSync) Process(result SyncResult) error {
 	if req := s.codeReqs[result.Hash]; req != nil && req.data == nil {
 		filled = true
 		req.data = result.Data
-		s.commit(req)
+		s.commitCodeRequest(req)
 	}
 	// There is an pending node request for this data, fill it.
 	if req := s.nodeReqs[result.Hash]; req != nil && req.data == nil {
@@ -359,11 +409,11 @@ func (s *TrieSync) Process(result SyncResult) error {
 			return err
 		}
 		if len(requests) == 0 && req.deps == 0 {
-			s.commit(req)
+			s.commitNodeRequest(req)
 		} else {
 			req.deps += len(requests)
 			for _, child := range requests {
-				s.schedule(child)
+				s.scheduleNodeRequest(child)
 			}
 		}
 	}
@@ -413,16 +463,12 @@ func (s *TrieSync) Pending() int {
 	return len(s.nodeReqs) + len(s.codeReqs)
 }
 
-// schedule inserts a new state retrieval request into the fetch queue. If there
+// scheduleCodeRequest inserts a new state retrieval request into the fetch queue. If there
 // is already a pending request for this node, the new request will be discarded
 // and only a parent reference added to the old one.
-func (s *TrieSync) schedule(req *request) {
-	reqset := s.nodeReqs
-	if req.code {
-		reqset = s.codeReqs
-	}
+func (s *TrieSync) scheduleNodeRequest(req *nodeRequest) {
 	// If we're already requesting this node, add a new reference and stop
-	if old, ok := reqset[req.hash]; ok {
+	if old, ok := s.nodeReqs[req.hash]; ok {
 		old.parents = append(old.parents, req.parents...)
 		return
 	}
@@ -430,23 +476,43 @@ func (s *TrieSync) schedule(req *request) {
 	// Count the retrieved trie by depth
 	s.retrievedByDepth[req.depth]++
 
-	reqset[req.hash] = req
+	s.nodeReqs[req.hash] = req
+	s.pushRequest(req.path, req.hash)
+}
 
+// scheduleCodeRequest inserts a new state retrieval request into the fetch queue. If there
+// is already a pending request for this node, the new request will be discarded
+// and only a parent reference added to the old one.
+func (s *TrieSync) scheduleCodeRequest(req *codeRequest) {
+	// If we're already requesting this node, add a new reference and stop
+	if old, ok := s.codeReqs[req.hash]; ok {
+		old.parents = append(old.parents, req.parents...)
+		return
+	}
+
+	// Count the retrieved trie by depth
+	s.retrievedByDepth[req.depth]++
+
+	s.codeReqs[req.hash] = req
+	s.pushRequest(req.path, req.hash)
+}
+
+func (s *TrieSync) pushRequest(path []byte, hash common.Hash) {
 	// Schedule the request for future retrieval. This queue is shared
 	// by both node requests and code requests. It can happen that there
 	// is a trie node and code has same hash. In this case two elements
 	// with same hash and same or different depth will be pushed. But it's
 	// ok the worst case is the second response will be treated as duplicated.
-	prio := int64(len(req.path)) << 56 // depth >= 128 will never happen, storage leaves will be included in their parents
-	for i := 0; i < 14 && i < len(req.path); i++ {
-		prio |= int64(15-req.path[i]) << (52 - i*4) // 15-nibble => lexicographic order
+	prio := int64(len(path)) << 56 // depth >= 128 will never happen, storage leaves will be included in their parents
+	for i := 0; i < 14 && i < len(path); i++ {
+		prio |= int64(15-path[i]) << (52 - i*4) // 15-nibble => lexicographic order
 	}
-	s.queue.Push(req.hash, prio)
+	s.queue.Push(hash, prio)
 }
 
 // children retrieves all the missing children of a state trie entry for future
 // retrieval scheduling.
-func (s *TrieSync) children(req *request, object node) ([]*request, error) {
+func (s *TrieSync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 	// Gather all the children of the node, irrelevant whether known or not
 	type child struct {
 		path  []byte
@@ -480,7 +546,7 @@ func (s *TrieSync) children(req *request, object node) ([]*request, error) {
 		panic(fmt.Sprintf("unknown node: %+v", node))
 	}
 	// Iterate over the children, and request all unknown ones
-	requests := make([]*request, 0, len(children))
+	requests := make([]*nodeRequest, 0, len(children))
 	for _, child := range children {
 		// Notify any external watcher of a new key/value node
 		if req.callback != nil {
@@ -521,10 +587,10 @@ func (s *TrieSync) children(req *request, object node) ([]*request, error) {
 			}
 
 			// Locally unknown node, schedule for retrieval
-			requests = append(requests, &request{
+			requests = append(requests, &nodeRequest{
 				path:     child.path,
 				hash:     hash,
-				parents:  []*request{req},
+				parents:  []*nodeRequest{req},
 				depth:    child.depth,
 				callback: req.callback,
 			})
@@ -545,11 +611,7 @@ func (s *TrieSync) commitNodeRequest(req *nodeRequest) (err error) {
 	delete(s.nodeReqs, req.hash)
 	s.fetches[len(req.path)]--
 
-	if req.parent != nil {
-		return s.commitParentNodes([]*nodeRequest{req.parent})
-	} else {
-		return nil
-	}
+	return s.commitParentNodes(req.parents)
 }
 
 // commit finalizes a retrieval request and stores it into the membatch. If any
@@ -572,32 +634,6 @@ func (s *TrieSync) commitParentNodes(parents []*nodeRequest) (err error) {
 		parent.deps--
 		if parent.deps == 0 {
 			if err := s.commitNodeRequest(parent); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (s *TrieSync) commit(req *request) (err error) {
-	// Count the committed trie by depth and Clear the counts of lower depth
-	s.committedByDepth[req.depth]++
-
-	// Write the node content to the membatch
-	if req.code {
-		s.membatch.codes[req.hash] = req.data
-		delete(s.codeReqs, req.hash)
-		s.fetches[len(req.path)]--
-	} else {
-		s.membatch.nodes[req.hash] = req.data
-		delete(s.nodeReqs, req.hash)
-		s.fetches[len(req.path)]--
-	}
-	// Check all parents for completion
-	for _, parent := range req.parents {
-		parent.deps--
-		if parent.deps == 0 {
-			if err := s.commit(parent); err != nil {
 				return err
 			}
 		}
