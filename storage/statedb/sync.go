@@ -58,6 +58,27 @@ type request struct {
 	callback LeafCallback // Callback to invoke if a leaf node it reached on this branch
 }
 
+// nodeRequest represents a scheduled or already in-flight trie node retrieval request.
+type nodeRequest struct {
+	hash common.Hash // Hash of the trie node to retrieve
+	path []byte      // Merkle path leading to this node for prioritization
+	data []byte      // Data content of the node, cached until all subtrees complete
+
+	parent   *nodeRequest // Parent state node referencing this entry
+	depth    int          // Depth level within the trie the node is located to prioritise DFS
+	deps     int          // Number of dependencies before allowed to commit this node
+	callback LeafCallback // Callback to invoke if a leaf node it reached on this branch
+}
+
+// codeRequest represents a scheduled or already in-flight bytecode retrieval request.
+type codeRequest struct {
+	hash    common.Hash    // Hash of the contract bytecode to retrieve
+	path    []byte         // Merkle path leading to this node for prioritization
+	data    []byte         // Data content of the node, cached until all subtrees complete
+	parents []*nodeRequest // Parent state nodes referencing this entry (notify all upon completion)
+	depth   int            // Depth level within the trie the node is located to prioritise DFS
+}
+
 // SyncPath is a path tuple identifying a particular trie node either in a single
 // trie (account) or a layered trie (account -> storage).
 //
@@ -96,6 +117,18 @@ type SyncResult struct {
 	Hash common.Hash // Hash of the originally unknown trie node
 	Data []byte      // Data content of the retrieved node
 	Err  error
+}
+
+// NodeSyncResult is a response with requested trie node along with its node path.
+type NodeSyncResult struct {
+	Hash common.Hash // Hash of the originally unknown trie node
+	Data []byte      // Data content of the retrieved trie node
+}
+
+// CodeSyncResult is a response with requested bytecode along with its hash.
+type CodeSyncResult struct {
+	Hash common.Hash // Hash the originally unknown bytecode
+	Data []byte      // Data content of the retrieved bytecode
 }
 
 // syncMemBatch is an in-memory buffer of successfully downloaded but not yet
