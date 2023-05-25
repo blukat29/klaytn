@@ -536,6 +536,49 @@ func (s *TrieSync) children(req *request, object node) ([]*request, error) {
 // commit finalizes a retrieval request and stores it into the membatch. If any
 // of the referencing parent requests complete due to this commit, they are also
 // committed themselves.
+func (s *TrieSync) commitNodeRequest(req *nodeRequest) (err error) {
+	// Count the committed trie by depth and Clear the counts of lower depth
+	s.committedByDepth[req.depth]++
+
+	// Write the node content to the membatch
+	s.membatch.nodes[req.hash] = req.data
+	delete(s.nodeReqs, req.hash)
+	s.fetches[len(req.path)]--
+
+	if req.parent != nil {
+		return s.commitParentNodes([]*nodeRequest{req.parent})
+	} else {
+		return nil
+	}
+}
+
+// commit finalizes a retrieval request and stores it into the membatch. If any
+// of the referencing parent requests complete due to this commit, they are also
+// committed themselves.
+func (s *TrieSync) commitCodeRequest(req *codeRequest) (err error) {
+	// Count the committed trie by depth and Clear the counts of lower depth
+	s.committedByDepth[req.depth]++
+
+	s.membatch.codes[req.hash] = req.data
+	delete(s.codeReqs, req.hash)
+	s.fetches[len(req.path)]--
+
+	return s.commitParentNodes(req.parents)
+}
+
+func (s *TrieSync) commitParentNodes(parents []*nodeRequest) (err error) {
+	// Check all parents for completion
+	for _, parent := range parents {
+		parent.deps--
+		if parent.deps == 0 {
+			if err := s.commitNodeRequest(parent); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (s *TrieSync) commit(req *request) (err error) {
 	// Count the committed trie by depth and Clear the counts of lower depth
 	s.committedByDepth[req.depth]++
