@@ -37,7 +37,7 @@ import (
 
 const (
 	HashLength         = 32
-	ExtHashNonceLength = 6
+	ExtHashNonceLength = 7
 	ExtHashLength      = HashLength + ExtHashNonceLength
 	AddressLength      = 20
 	SignatureLength    = 65
@@ -54,12 +54,12 @@ var (
 
 	extHashCounterMin  = uint64(0x100) // Any counter below extHashCounterMin are reserved.
 	extHashCounter     = extHashCounterMin
-	extHashRootNonce   = ExtHashNonce{0, 0, 0, 0, 0, 0x11}
-	extHashLegacyNonce = ExtHashNonce{0, 0, 0, 0, 0, 0x45}
+	extHashRootNonce   = ExtHashNonce{0, 0, 0, 0, 0, 0, 0x11}
+	extHashLegacyNonce = ExtHashNonce{0, 0, 0, 0, 0, 0, 0x45}
 )
 
 func init() {
-	extHashCounter = uint64(time.Now().UnixNano() >> 16)
+	extHashCounter = uint64(time.Now().UnixNano() >> 8)
 	if extHashCounter < extHashCounterMin {
 		panic("Timestamp too low to be used in ExtHash")
 	}
@@ -175,7 +175,7 @@ func (h UnprefixedHash) MarshalText() ([]byte, error) {
 /////////// ExtHash
 
 type (
-	// ExtHash is an extended hash composed of a 32 byte Hash and a 6 byte Nonce.
+	// ExtHash is an extended hash composed of a 32 byte Hash and a 7 byte Nonce.
 	// ExtHash is used as the reference of Merkle Patricia Trie nodes to enable
 	// the KIP-111 online state database pruning. The Hash component shall represent
 	// the merkle hash of the node and the Nonce component shall differentiate
@@ -186,7 +186,7 @@ type (
 
 // BytesToExtHash converts the byte array b to ExtHash.
 // If len(b) is 0 or 32, then b is interpreted as a Hash and extended with LegacyNonce.
-// If len(b) is 38, then b is interpreted as an ExtHash.
+// If len(b) is 39, then b is interpreted as an ExtHash.
 // Otherwise, this function panics.
 func BytesToExtHash(b []byte) ExtHash {
 	if len(b) == 0 || len(b) == HashLength {
@@ -212,6 +212,8 @@ func BytesToExtNonce(b []byte) ExtHashNonce {
 }
 
 func (n ExtHashNonce) Bytes() []byte { return n[:] }
+
+func (n ExtHashNonce) Hex() string { return hexutil.Encode(n[:]) }
 
 func (eh ExtHash) Bytes() []byte { return eh[:] }
 
@@ -289,7 +291,7 @@ func nextExtHashNonce() ExtHashNonce {
 	num := atomic.AddUint64(&extHashCounter, 1)
 	bin := make([]byte, 8)
 	binary.BigEndian.PutUint64(bin, num)
-	return BytesToExtNonce(bin[2:8])
+	return BytesToExtNonce(bin[1:8])
 }
 
 // extend converts Hash to ExtHash by attaching a given nonce
@@ -303,16 +305,19 @@ func (h Hash) extend(nonce ExtHashNonce) ExtHash {
 // Extend converts Hash to ExtHash by attaching an auto-generated nonce
 // Auto-generated nonces must be different every time
 func (h Hash) Extend() ExtHash {
-	return h.extend(nextExtHashNonce())
+	nonce := nextExtHashNonce()
+	eh := h.extend(nonce)
+	// logger.Trace("extend hash", "exthash", eh.Hex())
+	return eh
 }
 
-// ExtendRoot converts Hash to ExtHash by attaching the fixed root nonce "0x000000000011"
+// ExtendRoot converts Hash to ExtHash by attaching the fixed root nonce "0x00000000000011"
 // Root nonce are attached to hashes of Trie nodes that are state roots
 func (h Hash) ExtendRoot() ExtHash {
 	return h.extend(extHashRootNonce)
 }
 
-// ExtendLegacy converts Hash to ExtHash by attaching the fixed legacy nonce "0x000000000045"
+// ExtendLegacy converts Hash to ExtHash by attaching the fixed legacy nonce "0x00000000000045"
 // Legacy nonce are attached to hashes of Trie nodes in the legacy trie database
 func (h Hash) ExtendLegacy() ExtHash {
 	return h.extend(extHashLegacyNonce)
