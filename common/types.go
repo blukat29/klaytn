@@ -185,21 +185,20 @@ type (
 )
 
 // BytesToExtHash converts the byte array b to ExtHash.
-// If len(b) is 0 to 32, then interpret b as Hash and then attaches LegacyNonce.
-// Otherwise b is interpreted as ExtHash. If len(b) is larger than len(ExtHash), b
-// will be cropped from the left.
+// If len(b) is 0 or 32, then b is interpreted as a Hash and extended with LegacyNonce.
+// If len(b) is 38, then b is interpreted as an ExtHash.
+// Otherwise, this function panics.
 func BytesToExtHash(b []byte) ExtHash {
-	if len(b) <= HashLength {
+	if len(b) == 0 || len(b) == HashLength {
 		return BytesToHash(b).ExtendLegacy()
+	} else if len(b) == ExtHashLength {
+		var eh ExtHash
+		eh.SetBytes(b)
+		return eh
+	} else {
+		logger.Crit("Invalid ExtHash bytes", "data", hexutil.Encode(b))
+		return ExtHash{}
 	}
-
-	if len(b) > ExtHashLength {
-		b = b[len(b)-ExtHashLength:]
-	}
-
-	var eh ExtHash
-	copy(eh[ExtHashLength-len(b):], b)
-	return eh
 }
 
 func BytesToExtNonce(b []byte) ExtHashNonce {
@@ -238,6 +237,17 @@ func (eh *ExtHash) UnmarshalJSON(input []byte) error {
 
 func (eh ExtHash) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(eh[:]).MarshalText()
+}
+
+// SetBytes sets the ExtHash to the value of b.
+// If b is larger than ExtHashLength, b will be cropped from the left.
+// If b is smaller than ExtHashLength, b will be right aligned.
+func (eh *ExtHash) SetBytes(b []byte) {
+	if len(b) > ExtHashLength {
+		b = b[len(b)-ExtHashLength:]
+	}
+
+	copy(eh[ExtHashLength-len(b):], b)
 }
 
 func (eh ExtHash) getShardIndex(shardMask int) int {

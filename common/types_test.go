@@ -45,6 +45,7 @@ type hashLike interface {
 }
 
 type hashPtrLike interface {
+	SetBytes(b []byte)
 	UnmarshalText(input []byte) error
 	UnmarshalJSON(input []byte) error
 }
