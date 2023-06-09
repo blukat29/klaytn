@@ -343,7 +343,7 @@ func testIteratorContinueAfterError(t *testing.T, memonly bool) {
 			robj = triedb.nodes[rkey]
 			delete(triedb.nodes, rkey)
 		} else {
-			rval, _ = dbm.ReadTrieNode(rkey)
+			rval, _ = dbm.ReadTrieNode(nodehash)
 			dbm.DeleteTrieNode(nodehash)
 		}
 		// Iterate until the error is hit.
@@ -405,7 +405,7 @@ func testIteratorContinueAfterSeekError(t *testing.T, memonly bool) {
 		barNodeObj = triedb.nodes[barNodeHash]
 		delete(triedb.nodes, barNodeHash)
 	} else {
-		barNodeBlob, _ = dbm.ReadTrieNode(barNodeHash)
+		barNodeBlob, _ = dbm.ReadTrieNode(nodehash)
 		dbm.DeleteTrieNode(nodehash)
 	}
 	// Create a new iterator that seeks to "bars". Seeking can't proceed because

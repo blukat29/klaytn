@@ -147,7 +147,7 @@ func checkStateAccounts(t *testing.T, newDB database.DBManager, root common.Hash
 
 // checkTrieConsistency checks that all nodes in a (sub-)trie are indeed present.
 func checkTrieConsistency(db database.DBManager, root common.Hash) error {
-	if v, _ := db.ReadTrieNode(root); v == nil {
+	if v, _ := db.ReadTrieNode(root.ExtendLegacy()); v == nil { // only works with hash32
 		return nil // Consider a non existent state consistent.
 	}
 	trie, err := statedb.NewTrie(root, statedb.NewDatabase(db), nil)
@@ -163,7 +163,7 @@ func checkTrieConsistency(db database.DBManager, root common.Hash) error {
 // checkStateConsistency checks that all data of a state root is present.
 func checkStateConsistency(db database.DBManager, root common.Hash) error {
 	// Create and iterate a state trie rooted in a sub-node
-	if _, err := db.ReadTrieNode(root); err != nil {
+	if _, err := db.ReadTrieNode(root.ExtendLegacy()); err != nil { // only works with hash32
 		return nil // Consider a non existent state consistent.
 	}
 	state, err := New(root, NewDatabase(db), nil, nil)
@@ -388,7 +388,7 @@ func TestCheckStateConsistencyMissNode(t *testing.T) {
 				srcState.DeleteCode(codehash)
 				newState.DeleteCode(codehash)
 			} else {
-				data, _ = srcDiskDB.ReadTrieNode(nodehash.Unextend())
+				data, _ = srcDiskDB.ReadTrieNode(nodehash)
 				srcDiskDB.DeleteTrieNode(nodehash)
 				newDiskDB.DeleteTrieNode(nodehash)
 			}
@@ -678,7 +678,7 @@ func TestIncompleteStateSync(t *testing.T) {
 			val = dstDb.ReadCode(codehash)
 			dstState.DeleteCode(codehash)
 		} else {
-			val, _ = dstDb.ReadTrieNode(nodehash.Unextend())
+			val, _ = dstDb.ReadTrieNode(nodehash)
 			dstDb.DeleteTrieNode(nodehash)
 		}
 

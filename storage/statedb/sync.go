@@ -126,7 +126,7 @@ func (batch *syncMemBatch) hasCode(hash common.Hash) bool {
 }
 
 type StateTrieReadDB interface {
-	ReadTrieNode(hash common.Hash) ([]byte, error)
+	ReadTrieNode(hash common.ExtHash) ([]byte, error)
 	HasTrieNode(hash common.ExtHash) (bool, error)
 	HasCodeWithPrefix(hash common.Hash) bool
 }
@@ -347,7 +347,7 @@ func (s *TrieSync) Commit(dbw database.Batch) (int, error) {
 	written := 0
 	// Dump the membatch into a database dbw
 	for key, value := range s.membatch.nodes {
-		if err := dbw.Put(database.TrieNodeKey(key), value); err != nil {
+		if err := dbw.Put(database.TrieNodeKey(key.ExtendLegacy()), value); err != nil { // only works with hash32
 			return written, err
 		}
 		if s.bloom != nil {

@@ -460,7 +460,7 @@ func TestDBManager_TrieNode(t *testing.T) {
 		node2 = hash2[:]
 	)
 	for _, dbm := range dbManagers {
-		cachedNode, _ := dbm.ReadTrieNode(hash1)
+		cachedNode, _ := dbm.ReadTrieNode(key1)
 		assert.Nil(t, cachedNode)
 		hasStateTrieNode, _ := dbm.HasTrieNode(key1)
 		assert.False(t, hasStateTrieNode)
@@ -471,7 +471,7 @@ func TestDBManager_TrieNode(t *testing.T) {
 			t.Fatal("Failed writing batch", "err", err)
 		}
 
-		cachedNode, _ = dbm.ReadTrieNode(hash1)
+		cachedNode, _ = dbm.ReadTrieNode(key1)
 		assert.Equal(t, node2, cachedNode)
 
 		dbm.PutTrieNodeToBatch(batch, key1, node1)
@@ -479,7 +479,7 @@ func TestDBManager_TrieNode(t *testing.T) {
 			t.Fatal("Failed writing batch", "err", err)
 		}
 
-		cachedNode, _ = dbm.ReadTrieNode(hash1)
+		cachedNode, _ = dbm.ReadTrieNode(key1)
 		assert.Equal(t, node1, cachedNode)
 
 		hasStateTrieNode, _ = dbm.HasTrieNode(key1)
@@ -491,8 +491,8 @@ func TestDBManager_TrieNode(t *testing.T) {
 		err := dbm.CreateMigrationDBAndSetStatus(123)
 		assert.NoError(t, err)
 
-		cachedNode, _ = dbm.ReadTrieNode(hash1)
-		oldCachedNode, _ := dbm.ReadTrieNodeFromOld(hash1)
+		cachedNode, _ = dbm.ReadTrieNode(key1)
+		oldCachedNode, _ := dbm.ReadTrieNodeFromOld(key1)
 		assert.Equal(t, node1, cachedNode)
 		assert.Equal(t, node1, oldCachedNode)
 
@@ -507,8 +507,8 @@ func TestDBManager_TrieNode(t *testing.T) {
 			t.Fatal("Failed writing batch", "err", err)
 		}
 
-		cachedNode, _ = dbm.ReadTrieNode(hash2)
-		oldCachedNode, _ = dbm.ReadTrieNodeFromOld(hash2)
+		cachedNode, _ = dbm.ReadTrieNode(key2)
+		oldCachedNode, _ = dbm.ReadTrieNodeFromOld(key2)
 		assert.Equal(t, node2, cachedNode)
 		assert.Equal(t, node2, oldCachedNode)
 

@@ -507,7 +507,8 @@ func (db *Database) node(hash common.Hash) (n node, fromDB bool) {
 	}
 
 	// Content unavailable in memory, attempt to retrieve from disk
-	enc, err := db.diskDB.ReadTrieNode(hash)
+	// TODO-Klaytn-Pruning: node() takes ExtHash
+	enc, err := db.diskDB.ReadTrieNode(hash.ExtendLegacy())
 	if err != nil || enc == nil {
 		return nil, true
 	}
@@ -535,7 +536,8 @@ func (db *Database) Node(hash common.Hash) ([]byte, error) {
 		return node.rlp(), nil
 	}
 	// Content unavailable in memory, attempt to retrieve from disk
-	enc, err := db.diskDB.ReadTrieNode(hash)
+	// TODO-Klaytn-Pruning: Node() takes ExtHash
+	enc, err := db.diskDB.ReadTrieNode(hash.ExtendLegacy())
 	if err == nil && enc != nil {
 		db.setCachedNode(hash[:], enc)
 	}
@@ -562,7 +564,8 @@ func (db *Database) NodeFromOld(hash common.Hash) ([]byte, error) {
 		return node.rlp(), nil
 	}
 	// Content unavailable in memory, attempt to retrieve from disk
-	enc, err := db.diskDB.ReadTrieNodeFromOld(hash)
+	// TODO-Klaytn-Pruning: NodeFromOld() takes ExtHash
+	enc, err := db.diskDB.ReadTrieNodeFromOld(hash.ExtendLegacy())
 	if err == nil && enc != nil {
 		db.setCachedNode(hash[:], enc)
 	}
@@ -586,7 +589,8 @@ func (db *Database) DoesExistNodeInPersistent(hash common.Hash) bool {
 	}
 
 	// Content unavailable in DB cache, attempt to retrieve from disk
-	enc, err := db.diskDB.ReadTrieNode(hash)
+	// TODO-Klaytn-Pruning: DoesExistNodeInPersistent() takes ExtHash
+	enc, err := db.diskDB.ReadTrieNode(hash.ExtendLegacy())
 	if err == nil && enc != nil {
 		return true
 	}
