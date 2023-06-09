@@ -163,9 +163,9 @@ type DBManager interface {
 	ReadPreimageFromOld(hash common.Hash) []byte
 
 	// Write StateTrie
-	WriteTrieNode(hash common.Hash, node []byte)
+	WriteTrieNode(hash common.ExtHash, node []byte)
 	PutTrieNodeToBatch(batch Batch, hash common.Hash, node []byte)
-	DeleteTrieNode(hash common.Hash)
+	DeleteTrieNode(hash common.ExtHash)
 	WritePreimages(number uint64, preimages map[common.Hash][]byte)
 
 	// from accessors_indexes.go
@@ -1843,16 +1843,16 @@ func (dbm *databaseManager) ReadPreimageFromOld(hash common.Hash) []byte {
 	return data
 }
 
-func (dbm *databaseManager) WriteTrieNode(hash common.Hash, node []byte) {
+func (dbm *databaseManager) WriteTrieNode(hash common.ExtHash, node []byte) {
 	dbm.lockInMigration.RLock()
 	defer dbm.lockInMigration.RUnlock()
 
 	if dbm.inMigration {
-		if err := dbm.getDatabase(StateTrieMigrationDB).Put(TrieNodeKey(hash), node); err != nil {
+		if err := dbm.getDatabase(StateTrieMigrationDB).Put(TrieNodeKey(hash.Unextend()), node); err != nil {
 			logger.Crit("Failed to store trie node", "err", err)
 		}
 	}
-	if err := dbm.getDatabase(StateTrieDB).Put(TrieNodeKey(hash), node); err != nil {
+	if err := dbm.getDatabase(StateTrieDB).Put(TrieNodeKey(hash.Unextend()), node); err != nil {
 		logger.Crit("Failed to store trie node", "err", err)
 	}
 }
@@ -1882,8 +1882,8 @@ func (dbm *databaseManager) WritePreimages(number uint64, preimages map[common.H
 	preimageHitCounter.Inc(int64(len(preimages)))
 }
 
-func (dbm *databaseManager) DeleteTrieNode(hash common.Hash) {
-	if err := dbm.getDatabase(StateTrieDB).Delete(TrieNodeKey(hash)); err != nil {
+func (dbm *databaseManager) DeleteTrieNode(hash common.ExtHash) {
+	if err := dbm.getDatabase(StateTrieDB).Delete(TrieNodeKey(hash.Unextend())); err != nil {
 		logger.Crit("Failed to delete trie node", "err", err)
 	}
 }

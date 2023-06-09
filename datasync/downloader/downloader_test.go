@@ -149,7 +149,8 @@ func newTester() *downloadTester {
 		peerMissingStates: make(map[string]map[common.Hash]bool),
 	}
 	tester.stateDb = localdb
-	tester.stateDb.WriteTrieNode(genesis.Root(), []byte{0x00})
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	tester.stateDb.WriteTrieNode(genesis.Root().ExtendLegacy(), []byte{0x00})
 
 	tester.downloader = New(FullSync, tester.stateDb, statedb.NewSyncBloom(1, tester.stateDb.GetMemDB()), new(event.TypeMux), tester, nil, tester.dropPeer, uint64(istanbul.WeightedRandom))
 
@@ -438,7 +439,8 @@ func (dl *downloadTester) InsertChain(blocks types.Blocks) (int, error) {
 			dl.ownHeaders[block.Hash()] = block.Header()
 		}
 		dl.ownBlocks[block.Hash()] = block
-		dl.stateDb.WriteTrieNode(block.Root(), []byte{0x00})
+		// TODO-Klaytn-Pruning: Use ExtendRoot
+		dl.stateDb.WriteTrieNode(block.Root().ExtendLegacy(), []byte{0x00})
 		dl.ownChainTd[block.Hash()] = new(big.Int).Add(dl.ownChainTd[block.ParentHash()], block.BlockScore())
 	}
 	return len(blocks), nil
