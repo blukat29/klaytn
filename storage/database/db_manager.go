@@ -164,7 +164,7 @@ type DBManager interface {
 
 	// Write StateTrie
 	WriteTrieNode(hash common.ExtHash, node []byte)
-	PutTrieNodeToBatch(batch Batch, hash common.Hash, node []byte)
+	PutTrieNodeToBatch(batch Batch, hash common.ExtHash, node []byte)
 	DeleteTrieNode(hash common.ExtHash)
 	WritePreimages(number uint64, preimages map[common.Hash][]byte)
 
@@ -1857,8 +1857,8 @@ func (dbm *databaseManager) WriteTrieNode(hash common.ExtHash, node []byte) {
 	}
 }
 
-func (dbm *databaseManager) PutTrieNodeToBatch(batch Batch, hash common.Hash, node []byte) {
-	if err := batch.Put(TrieNodeKey(hash), node); err != nil {
+func (dbm *databaseManager) PutTrieNodeToBatch(batch Batch, hash common.ExtHash, node []byte) {
+	if err := batch.Put(TrieNodeKey(hash.Unextend()), node); err != nil {
 		logger.Crit("Failed to store trie node", "err", err)
 	}
 }
