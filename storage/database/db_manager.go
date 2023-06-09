@@ -146,19 +146,19 @@ type DBManager interface {
 
 	// State Trie Database related operations
 	ReadTrieNode(hash common.Hash) ([]byte, error)
-	HasTrieNode(hash common.Hash) (bool, error)
+	HasTrieNode(hash common.ExtHash) (bool, error)
 	HasCodeWithPrefix(hash common.Hash) bool
 	ReadPreimage(hash common.Hash) []byte
 
 	// Read StateTrie from new DB
 	ReadTrieNodeFromNew(hash common.Hash) ([]byte, error)
-	HasTrieNodeFromNew(hash common.Hash) (bool, error)
+	HasTrieNodeFromNew(hash common.ExtHash) (bool, error)
 	HasCodeWithPrefixFromNew(hash common.Hash) bool
 	ReadPreimageFromNew(hash common.Hash) []byte
 
 	// Read StateTrie from old DB
 	ReadTrieNodeFromOld(hash common.Hash) ([]byte, error)
-	HasTrieNodeFromOld(hash common.Hash) (bool, error)
+	HasTrieNodeFromOld(hash common.ExtHash) (bool, error)
 	HasCodeWithPrefixFromOld(hash common.Hash) bool
 	ReadPreimageFromOld(hash common.Hash) []byte
 
@@ -1769,8 +1769,8 @@ func (dbm *databaseManager) ReadTrieNode(hash common.Hash) ([]byte, error) {
 	return val, err
 }
 
-func (dbm *databaseManager) HasTrieNode(hash common.Hash) (bool, error) {
-	val, err := dbm.ReadTrieNode(hash)
+func (dbm *databaseManager) HasTrieNode(hash common.ExtHash) (bool, error) {
+	val, err := dbm.ReadTrieNode(hash.Unextend())
 	if val == nil || err != nil {
 		return false, err
 	} else {
@@ -1795,8 +1795,8 @@ func (dbm *databaseManager) ReadTrieNodeFromNew(hash common.Hash) ([]byte, error
 	return dbm.GetStateTrieMigrationDB().Get(TrieNodeKey(hash))
 }
 
-func (dbm *databaseManager) HasTrieNodeFromNew(hash common.Hash) (bool, error) {
-	val, err := dbm.ReadTrieNodeFromNew(hash)
+func (dbm *databaseManager) HasTrieNodeFromNew(hash common.ExtHash) (bool, error) {
+	val, err := dbm.ReadTrieNodeFromNew(hash.Unextend())
 	if val == nil || err != nil {
 		return false, err
 	} else {
@@ -1821,8 +1821,8 @@ func (dbm *databaseManager) ReadTrieNodeFromOld(hash common.Hash) ([]byte, error
 	return db.Get(TrieNodeKey(hash))
 }
 
-func (dbm *databaseManager) HasTrieNodeFromOld(hash common.Hash) (bool, error) {
-	val, err := dbm.ReadTrieNodeFromOld(hash)
+func (dbm *databaseManager) HasTrieNodeFromOld(hash common.ExtHash) (bool, error) {
+	val, err := dbm.ReadTrieNodeFromOld(hash.Unextend())
 	if val == nil || err != nil {
 		return false, err
 	} else {

@@ -349,7 +349,8 @@ func (dl *downloadTester) CurrentBlock() *types.Block {
 
 	for i := len(dl.ownHashes) - 1; i >= 0; i-- {
 		if block := dl.ownBlocks[dl.ownHashes[i]]; block != nil {
-			if has, _ := dl.stateDb.HasTrieNode(block.Root()); has {
+			// TODO-Klaytn-Pruning: Use ExtendRoot
+			if has, _ := dl.stateDb.HasTrieNode(block.Root().ExtendLegacy()); has {
 				return block
 			}
 		}
@@ -431,7 +432,8 @@ func (dl *downloadTester) InsertChain(blocks types.Blocks) (int, error) {
 	for i, block := range blocks {
 		if parent, ok := dl.ownBlocks[block.ParentHash()]; !ok {
 			return i, fmt.Errorf("InsertChain: unknown parent at position %d / %d", i, len(blocks))
-		} else if has, _ := dl.stateDb.HasTrieNode(parent.Root()); !has {
+			// TODO-Klaytn-Pruning: Use ExtendRoot
+		} else if has, _ := dl.stateDb.HasTrieNode(parent.Root().ExtendLegacy()); !has {
 			return i, fmt.Errorf("InsertChain: unknown parent state %x", parent.Root())
 		}
 		if _, ok := dl.ownHeaders[block.Hash()]; !ok {
