@@ -420,7 +420,8 @@ func (db *Database) NodeChildren(hash common.ExtHash) ([]common.ExtHash, error) 
 // The blob size must be specified to allow proper size tracking.
 // All nodes inserted by this function will be reference tracked
 // and in theory should only used for **trie nodes** insertion.
-func (db *Database) insert(hash common.Hash, lenEncoded uint16, node node) {
+func (db *Database) insert(_hash common.ExtHash, lenEncoded uint16, node node) {
+	hash := _hash.Unextend()
 	// If the node's already cached, skip
 	if _, ok := db.nodes[hash]; ok {
 		return

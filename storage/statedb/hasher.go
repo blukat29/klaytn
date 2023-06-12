@@ -210,7 +210,7 @@ func (h *hasher) store(n node, db *Database, force bool) (node, uint16) {
 		hash := common.BytesToHash(hash)
 
 		db.lock.Lock()
-		db.insert(hash, lenEncoded, n)
+		db.insert(hash.ExtendLegacy(), lenEncoded, n)
 		db.lock.Unlock()
 
 		// Track external references from account->storage trie
