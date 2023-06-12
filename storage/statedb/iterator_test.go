@@ -309,7 +309,7 @@ func testIteratorContinueAfterError(t *testing.T, memonly bool) {
 
 	var (
 		diskKeys [][]byte
-		memKeys  []common.Hash
+		memKeys  []common.ExtHash
 	)
 	if memonly {
 		memKeys = triedb.Nodes()
@@ -323,21 +323,24 @@ func testIteratorContinueAfterError(t *testing.T, memonly bool) {
 		// Remove a random node from the database. It can't be the root node
 		// because that one is already loaded.
 		var (
-			rkey common.Hash
-			rval []byte
-			robj *cachedNode
+			rkey     common.Hash
+			nodehash common.ExtHash
+			rval     []byte
+			robj     *cachedNode
 		)
 		for {
 			if memonly {
-				rkey = memKeys[rand.Intn(len(memKeys))]
+				idx := rand.Intn(len(memKeys))
+				nodehash = memKeys[idx]
 			} else {
-				copy(rkey[:], diskKeys[rand.Intn(len(diskKeys))])
+				idx := rand.Intn(len(diskKeys))
+				nodehash = common.BytesToExtHash(diskKeys[idx])
 			}
+			rkey = nodehash.Unextend()
 			if rkey != tr.Hash() {
 				break
 			}
 		}
-		nodehash := rkey.ExtendLegacy()
 
 		if memonly {
 			robj = triedb.nodes[rkey]

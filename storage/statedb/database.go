@@ -624,14 +624,14 @@ func (db *Database) preimage(hash common.Hash) []byte {
 // Nodes retrieves the hashes of all the nodes cached within the memory database.
 // This method is extremely expensive and should only be used to validate internal
 // states in test code.
-func (db *Database) Nodes() []common.Hash {
+func (db *Database) Nodes() []common.ExtHash {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	hashes := make([]common.Hash, 0, len(db.nodes))
+	hashes := make([]common.ExtHash, 0, len(db.nodes))
 	for hash := range db.nodes {
 		if hash != (common.Hash{}) { // Special case for "root" references/nodes
-			hashes = append(hashes, hash)
+			hashes = append(hashes, hash.ExtendLegacy())
 		}
 	}
 	return hashes

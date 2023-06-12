@@ -52,7 +52,8 @@ func TestNodeIteratorCoverage(t *testing.T) {
 			t.Errorf("failed to retrieve reported node %x", hash)
 		}
 	}
-	for _, hash := range db.TrieDB().Nodes() {
+	for _, exthash := range db.TrieDB().Nodes() {
+		hash := exthash.Unextend()
 		if _, ok := hashes[hash]; !ok && hash != emptyCode {
 			t.Errorf("state entry not reported %x", hash)
 		}
@@ -63,7 +64,7 @@ func TestNodeIteratorCoverage(t *testing.T) {
 		if bytes.HasPrefix(key, []byte("secure-key-")) {
 			continue
 		}
-		if bytes.Compare(emptyCode[:], common.BytesToHash(key).Bytes()) == 0 {
+		if bytes.Equal(emptyCode[:], common.BytesToHash(key).Bytes()) {
 			continue
 		}
 		if _, ok := hashes[common.BytesToHash(key)]; !ok {
