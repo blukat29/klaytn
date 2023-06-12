@@ -236,7 +236,8 @@ func traceTrie(ctx *cli.Context) error {
 	trieDB := sdb.Database().TrieDB()
 
 	// Get root-node childrens to create goroutine by number of childrens
-	children, err := trieDB.NodeChildren(root)
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	children, err := trieDB.NodeChildren(root.ExtendLegacy())
 	if err != nil {
 		return fmt.Errorf("Fail get childrens of root : %v", err)
 	}
@@ -261,7 +262,7 @@ func traceTrie(ctx *cli.Context) error {
 		go func(child common.Hash) {
 			defer childWait.Done()
 			doTraceTrie(sdb.Database(), child)
-		}(child)
+		}(child.Unextend())
 	}
 
 	childWait.Wait()

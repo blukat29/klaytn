@@ -380,14 +380,14 @@ func (db *Database) RUnlockGCCachedNode() {
 }
 
 // NodeChildren retrieves the children of the given hash trie
-func (db *Database) NodeChildren(hash common.Hash) ([]common.Hash, error) {
-	childrenHash := make([]common.Hash, 0, 16)
+func (db *Database) NodeChildren(hash common.ExtHash) ([]common.ExtHash, error) {
+	childrenHash := make([]common.ExtHash, 0, 16)
 
-	if (hash == common.Hash{}) {
+	if (hash.Unextend() == common.Hash{}) {
 		return childrenHash, ErrZeroHashNode
 	}
 
-	n, _ := db.node(hash)
+	n, _ := db.node(hash.Unextend())
 	if n == nil {
 		return childrenHash, nil
 	}
@@ -408,7 +408,7 @@ func (db *Database) NodeChildren(hash common.Hash) ([]common.Hash, error) {
 	for _, child := range children {
 		n, ok := child.(hashNode)
 		if ok {
-			hash := common.BytesToHash(n)
+			hash := common.BytesToExtHash(n)
 			childrenHash = append(childrenHash, hash)
 		}
 	}
@@ -1144,8 +1144,8 @@ type NodeInfo struct {
 }
 
 // CollectChildrenStats collects the depth of the trie recursively
-func (db *Database) CollectChildrenStats(node common.Hash, depth int, resultCh chan<- NodeInfo) {
-	n, _ := db.node(node)
+func (db *Database) CollectChildrenStats(node common.ExtHash, depth int, resultCh chan<- NodeInfo) {
+	n, _ := db.node(node.Unextend())
 	if n == nil {
 		return
 	}

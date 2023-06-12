@@ -484,7 +484,8 @@ func (bc *BlockChain) StartWarmUp() error {
 		return err
 	}
 	// retrieve children nodes of state trie root node
-	children, err := db.TrieDB().NodeChildren(block.Root())
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	children, err := db.TrieDB().NodeChildren(block.Root().ExtendLegacy())
 	if err != nil {
 		return err
 	}
@@ -493,7 +494,7 @@ func (bc *BlockChain) StartWarmUp() error {
 	errCh := make(chan error)
 	bc.quitWarmUp = make(chan struct{})
 	for _, child := range children {
-		go bc.iterateStateTrie(child, db, resultCh, errCh)
+		go bc.iterateStateTrie(child.Unextend(), db, resultCh, errCh)
 	}
 	// run a warm-up checker routine
 	go bc.warmUpChecker(mainTrieDB, len(children), resultCh, errCh)
@@ -540,7 +541,7 @@ func (bc *BlockChain) StartCollectingTrieStats(contractAddr common.Address) erro
 		}
 	}
 
-	children, err := db.TrieDB().NodeChildren(startNode)
+	children, err := db.TrieDB().NodeChildren(startNode.ExtendLegacy())
 	if err != nil {
 		logger.Error("Failed to retrieve the children of start node", "err", err)
 		return err
@@ -555,14 +556,14 @@ func (bc *BlockChain) StartCollectingTrieStats(contractAddr common.Address) erro
 
 // collectChildrenStats wraps CollectChildrenStats, in order to send finish signal to resultCh.
 func collectChildrenStats(db state.Database, child common.Hash, resultCh chan<- statedb.NodeInfo) {
-	db.TrieDB().CollectChildrenStats(child, 2, resultCh)
+	db.TrieDB().CollectChildrenStats(child.ExtendLegacy(), 2, resultCh)
 	resultCh <- statedb.NodeInfo{Finished: true}
 }
 
 // collectTrieStats is the main function of collecting trie statistics.
 // It spawns goroutines for the upper-most children and iterates each sub-trie.
 func collectTrieStats(db state.Database, startNode common.Hash) {
-	children, err := db.TrieDB().NodeChildren(startNode)
+	children, err := db.TrieDB().NodeChildren(startNode.ExtendLegacy())
 	if err != nil {
 		logger.Error("Failed to retrieve the children of start node", "err", err)
 	}
@@ -570,7 +571,7 @@ func collectTrieStats(db state.Database, startNode common.Hash) {
 	// collecting statistics by running individual goroutines for each child
 	resultCh := make(chan statedb.NodeInfo, 10000)
 	for _, child := range children {
-		go collectChildrenStats(db, child, resultCh)
+		go collectChildrenStats(db, child.Unextend(), resultCh)
 	}
 
 	numGoRoutines := len(children)
@@ -701,7 +702,7 @@ func (bc *BlockChain) StartContractWarmUp(contractAddr common.Address) error {
 		return fmt.Errorf("failed to prepare contract warm-up, err: %w", err)
 	}
 	// retrieve children nodes of contract storage trie root node
-	children, err := db.TrieDB().NodeChildren(storageTrieRoot)
+	children, err := db.TrieDB().NodeChildren(storageTrieRoot.ExtendLegacy())
 	if err != nil {
 		return err
 	}
@@ -710,7 +711,7 @@ func (bc *BlockChain) StartContractWarmUp(contractAddr common.Address) error {
 	errCh := make(chan error)
 	bc.quitWarmUp = make(chan struct{})
 	for _, child := range children {
-		go bc.iterateStorageTrie(child, storageTrie, resultCh, errCh)
+		go bc.iterateStorageTrie(child.Unextend(), storageTrie, resultCh, errCh)
 	}
 	// run a warm-up checker routine
 	go bc.warmUpChecker(mainTrieDB, len(children), resultCh, errCh)
