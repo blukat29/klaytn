@@ -1306,7 +1306,7 @@ func (bc *BlockChain) writeStateTrie(block *types.Block, state *state.StateDB) e
 		bc.lastCommittedBlock = block.NumberU64()
 	} else {
 		// Full but not archive node, do proper garbage collection
-		trieDB.Reference(root, common.Hash{}) // metadata reference to keep trie alive
+		trieDB.ReferenceRoot(root) // metadata reference to keep trie alive
 
 		// If we exceeded our memory allowance, flush matured singleton nodes to disk
 		var (

@@ -201,6 +201,8 @@ func BytesToExtHash(b []byte) ExtHash {
 	}
 }
 
+func HexToExtHash(s string) ExtHash { return BytesToExtHash(FromHex(s)) }
+
 func BytesToExtNonce(b []byte) ExtHashNonce {
 	if len(b) > ExtHashNonceLength {
 		b = b[len(b)-ExtHashNonceLength:]

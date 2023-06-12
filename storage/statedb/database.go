@@ -643,7 +643,21 @@ func (db *Database) Nodes() []common.ExtHash {
 // This function is used to add reference between internal trie node
 // and external node(e.g. storage trie root), all internal trie nodes
 // are referenced together by database itself.
-func (db *Database) Reference(child common.Hash, parent common.Hash) {
+// Use ReferenceRoot to reference a state root, otherwise use Reference.
+func (db *Database) ReferenceRoot(root common.Hash) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	db.reference(root.ExtendLegacy(), common.ExtHash{})
+}
+
+// Reference adds a new reference from a parent node to a child node.
+// This function is used to add reference between internal trie node
+// and external node(e.g. storage trie root), all internal trie nodes
+// are referenced together by database itself.
+// Use ReferenceRoot to reference a state root, otherwise use Reference.
+func (db *Database) Reference(child common.ExtHash, parent common.ExtHash) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
@@ -651,7 +665,9 @@ func (db *Database) Reference(child common.Hash, parent common.Hash) {
 }
 
 // reference is the private locked version of Reference.
-func (db *Database) reference(child common.Hash, parent common.Hash) {
+func (db *Database) reference(_child common.ExtHash, _parent common.ExtHash) {
+	child := _child.Unextend()
+	parent := _parent.Unextend()
 	// If the node does not exist, it's a node pulled from disk, skip
 	node, ok := db.nodes[child]
 	if !ok {

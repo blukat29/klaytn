@@ -1024,7 +1024,9 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (root common.Hash, err error) 
 		acc := serializer.GetAccount()
 		if pa := account.GetProgramAccount(acc); pa != nil {
 			if pa.GetStorageRoot() != emptyState {
-				s.db.TrieDB().Reference(pa.GetStorageRoot(), parent)
+				// TODO-Klaytn-Pruning: Use ExtHash for StorageRoot
+				// TODO-Klaytn-Pruning: Use ExtHash in onleaf
+				s.db.TrieDB().Reference(pa.GetStorageRoot().ExtendLegacy(), parent.ExtendLegacy())
 			}
 		}
 		return nil

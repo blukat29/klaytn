@@ -25,8 +25,10 @@ import (
 )
 
 var (
-	childHash  = common.HexToHash("1341655") // 20190805 in hexadecimal
-	parentHash = common.HexToHash("1343A3F") // 20199999 in hexadecimal
+	childHash     = common.HexToHash("1341655") // 20190805 in hexadecimal
+	parentHash    = common.HexToHash("1343A3F") // 20199999 in hexadecimal
+	childExtHash  = childHash.ExtendLegacy()
+	parentExtHash = parentHash.ExtendLegacy()
 )
 
 func TestDatabase_Reference(t *testing.T) {
@@ -36,7 +38,7 @@ func TestDatabase_Reference(t *testing.T) {
 	assert.Equal(t, memDB, db.DiskDB())
 	assert.Equal(t, 1, len(db.nodes)) // {} : {}
 
-	db.Reference(childHash, parentHash)
+	db.Reference(childExtHash, parentExtHash)
 	assert.Equal(t, 1, len(db.nodes)) // {} : {}
 
 	child := &cachedNode{}
@@ -45,13 +47,13 @@ func TestDatabase_Reference(t *testing.T) {
 	db.nodes[parentHash] = parent
 
 	// Call Reference after updating db.nodes
-	db.Reference(childHash, parentHash)
+	db.Reference(childExtHash, parentExtHash)
 	assert.Equal(t, 3, len(db.nodes))
 	assert.Equal(t, uint64(1), child.parents)
 	assert.Equal(t, uint64(1), parent.children[childHash])
 
 	// Just calling Reference does not have effect
-	db.Reference(childHash, parentHash)
+	db.Reference(childExtHash, parentExtHash)
 	assert.Equal(t, 3, len(db.nodes))
 	assert.Equal(t, uint64(1), child.parents)
 	assert.Equal(t, uint64(1), parent.children[childHash])
@@ -72,7 +74,7 @@ func TestDatabase_DeReference(t *testing.T) {
 	db.nodes[childHash] = child
 	db.nodes[parentHash] = parent
 
-	db.Reference(childHash, parentHash)
+	db.Reference(childExtHash, parentExtHash)
 	assert.Equal(t, 3, len(db.nodes))
 	assert.Equal(t, uint64(1), child.parents)
 	assert.Equal(t, uint64(1), parent.children[childHash])
@@ -100,7 +102,7 @@ func TestDatabase_Size(t *testing.T) {
 	db.nodes[childHash] = child
 	db.nodes[parentHash] = parent
 
-	db.Reference(childHash, parentHash)
+	db.Reference(childExtHash, parentExtHash)
 
 	totalMemorySize, _, preimagesSize = db.Size()
 	assert.Equal(t, common.StorageSize(128), totalMemorySize)
