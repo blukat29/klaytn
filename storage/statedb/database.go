@@ -85,7 +85,7 @@ var (
 	must be an empty value so that initializers `&Database{}` and `&cachedNode{}`
 	automatically contain the sentinel.
 	*/
-	sentinel = common.Hash{}
+	sentinel = common.HexToHash("77")
 )
 
 // commitResultChSizeLimit limits the size of channel used for commitResult.
@@ -198,6 +198,14 @@ type cachedNode struct {
 
 	flushPrev common.Hash // Previous node in the flush-list
 	flushNext common.Hash // Next node in the flush-list
+}
+
+func newCachedNode() *cachedNode {
+	return &cachedNode{
+		// children is lazily created at reference() to save memory.
+		flushPrev: sentinel,
+		flushNext: sentinel,
+	}
 }
 
 // rlp returns the raw rlp encoded blob of the cached trie node, either directly
@@ -336,6 +344,8 @@ func NewDatabaseWithNewCache(diskDB database.DBManager, cacheConfig *TrieNodeCac
 	return &Database{
 		diskDB:              diskDB,
 		nodes:               map[common.Hash]*cachedNode{sentinel: {}},
+		oldest:              sentinel,
+		newest:              sentinel,
 		preimages:           make(map[common.Hash][]byte),
 		trieNodeCache:       trieNodeCache,
 		trieNodeCacheConfig: cacheConfig,
@@ -349,6 +359,8 @@ func NewDatabaseWithExistingCache(diskDB database.DBManager, cache TrieNodeCache
 	return &Database{
 		diskDB:        diskDB,
 		nodes:         map[common.Hash]*cachedNode{sentinel: {}},
+		oldest:        sentinel,
+		newest:        sentinel,
 		preimages:     make(map[common.Hash][]byte),
 		trieNodeCache: cache,
 	}
@@ -449,12 +461,10 @@ func (db *Database) insert(_hash common.ExtHash, lenEncoded uint16, node node) {
 		return
 	}
 	// Create the cached entry for this node
-	entry := &cachedNode{
-		node:      simplifyNode(node),
-		size:      lenEncoded,
-		flushPrev: db.newest,
-		flushNext: sentinel,
-	}
+	entry := newCachedNode()
+	entry.node = simplifyNode(node)
+	entry.size = lenEncoded
+	entry.flushPrev = db.newest
 	for _, child := range entry.childs() {
 		if c := db.nodes[child]; c != nil {
 			c.parents++

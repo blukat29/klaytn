@@ -41,8 +41,8 @@ func TestDatabase_Reference(t *testing.T) {
 	db.Reference(childExtHash, parentExtHash)
 	assert.Equal(t, 1, len(db.nodes)) // {} : {}
 
-	child := &cachedNode{}
-	parent := &cachedNode{}
+	child := newCachedNode()
+	parent := newCachedNode()
 	db.nodes[childHash] = child
 	db.nodes[parentHash] = parent
 
@@ -69,8 +69,8 @@ func TestDatabase_DeReference(t *testing.T) {
 	assert.Equal(t, uint64(0), db.gcnodes)
 	assert.Equal(t, common.StorageSize(0), db.gcsize)
 
-	child := &cachedNode{}
-	parent := &cachedNode{}
+	child := newCachedNode()
+	parent := newCachedNode()
 	db.nodes[childHash] = child
 	db.nodes[parentHash] = parent
 
@@ -97,8 +97,8 @@ func TestDatabase_Size(t *testing.T) {
 	assert.Equal(t, common.StorageSize(0), totalMemorySize)
 	assert.Equal(t, common.StorageSize(0), preimagesSize)
 
-	child := &cachedNode{}
-	parent := &cachedNode{}
+	child := newCachedNode()
+	parent := newCachedNode()
 	db.nodes[childHash] = child
 	db.nodes[parentHash] = parent
 

@@ -118,7 +118,7 @@ func TestNodeIteratorCoverage(t *testing.T) {
 		}
 	}
 	for hash, obj := range db.nodes {
-		if obj != nil && hash != (common.Hash{}) {
+		if obj != nil && hash != sentinel {
 			if _, ok := hashes[hash]; !ok {
 				t.Errorf("state entry not reported %x", hash)
 			}
