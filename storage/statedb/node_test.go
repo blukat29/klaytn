@@ -394,16 +394,13 @@ func checkDecodeNode(t *testing.T, name string, tc testNodeEncodingTC) {
 }
 
 func TestDecodeNodeTC(t *testing.T) {
-	// TODO-Klaytn-Pruning: Revive test
-	/*
-		for name, tc := range collapsedNodeTCs_legacy() {
-			checkDecodeNode(t, name, tc)
-		}
-		for name, tc := range collapsedNodeTCs_exthash() {
-			checkDecodeNode(t, name, tc)
-		}
-		for name, tc := range collapsedNodeTCs_extroot() {
-			checkDecodeNode(t, name, tc)
-		}
-	*/
+	for name, tc := range collapsedNodeTCs_legacy() {
+		checkDecodeNode(t, name, tc)
+	}
+	for name, tc := range collapsedNodeTCs_exthash() {
+		checkDecodeNode(t, name, tc)
+	}
+	for name, tc := range collapsedNodeTCs_extroot() {
+		checkDecodeNode(t, name, tc)
+	}
 }

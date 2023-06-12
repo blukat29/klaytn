@@ -62,13 +62,10 @@ func checkHasherHash(t *testing.T, name string, tc testNodeEncodingTC) {
 }
 
 func TestHasherHashTC(t *testing.T) {
-	// TODO-Klaytn-Pruning: Revive test
-	/*
-		for name, tc := range collapsedNodeTCs_legacy() {
-			checkHasherHash(t, name, tc)
-		}
-		for name, tc := range resolvedNodeTCs_legacy() {
-			checkHasherHash(t, name, tc)
-		}
-	*/
+	for name, tc := range collapsedNodeTCs_legacy() {
+		checkHasherHash(t, name, tc)
+	}
+	for name, tc := range resolvedNodeTCs_legacy() {
+		checkHasherHash(t, name, tc)
+	}
 }
