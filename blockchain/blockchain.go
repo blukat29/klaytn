@@ -689,7 +689,8 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 
 // StateAtWithPersistent returns a new mutable state based on a particular point in time with persistent trie nodes.
 func (bc *BlockChain) StateAtWithPersistent(root common.Hash) (*state.StateDB, error) {
-	exist := bc.stateCache.TrieDB().DoesExistNodeInPersistent(root)
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	exist := bc.stateCache.TrieDB().DoesExistNodeInPersistent(root.ExtendLegacy())
 	if !exist {
 		return nil, ErrNotExistNode
 	}
@@ -700,7 +701,8 @@ func (bc *BlockChain) StateAtWithPersistent(root common.Hash) (*state.StateDB, e
 func (bc *BlockChain) StateAtWithGCLock(root common.Hash) (*state.StateDB, error) {
 	bc.RLockGCCachedNode()
 
-	exist := bc.stateCache.TrieDB().DoesExistCachedNode(root)
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	exist := bc.stateCache.TrieDB().DoesExistCachedNode(root.ExtendLegacy())
 	if !exist {
 		bc.RUnlockGCCachedNode()
 		return nil, ErrNotExistNode
@@ -977,8 +979,9 @@ func (bc *BlockChain) GetLogsByHash(hash common.Hash) [][]*types.Log {
 
 // TrieNode retrieves a blob of data associated with a trie node
 // either from ephemeral in-memory cache, or from persistent storage.
+// Does not work if Online Pruning is enabled.
 func (bc *BlockChain) TrieNode(hash common.Hash) ([]byte, error) {
-	return bc.stateCache.TrieDB().Node(hash)
+	return bc.stateCache.TrieDB().Node(hash.ExtendLegacy())
 }
 
 // ContractCode retrieves a blob of data associated with a contract hash

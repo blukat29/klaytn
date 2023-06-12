@@ -518,7 +518,9 @@ func (db *Database) node(hash common.Hash) (n node, fromDB bool) {
 
 // Node retrieves an encoded cached trie node from memory. If it cannot be found
 // cached, the method queries the persistent database for the content.
-func (db *Database) Node(hash common.Hash) ([]byte, error) {
+func (db *Database) Node(_hash common.ExtHash) ([]byte, error) {
+	// TODO-Klaytn-Pruning: Use ExtHash in Node()
+	hash := _hash.Unextend()
 	if (hash == common.Hash{}) {
 		return nil, ErrZeroHashNode
 	}
@@ -546,7 +548,9 @@ func (db *Database) Node(hash common.Hash) ([]byte, error) {
 
 // NodeFromOld retrieves an encoded cached trie node from memory. If it cannot be found
 // cached, the method queries the old persistent database for the content.
-func (db *Database) NodeFromOld(hash common.Hash) ([]byte, error) {
+func (db *Database) NodeFromOld(_hash common.ExtHash) ([]byte, error) {
+	// TODO-Klaytn-Pruning: Use ExtHash in NodeFromOld()
+	hash := _hash.Unextend()
 	if (hash == common.Hash{}) {
 		return nil, ErrZeroHashNode
 	}
@@ -573,7 +577,9 @@ func (db *Database) NodeFromOld(hash common.Hash) ([]byte, error) {
 }
 
 // DoesExistCachedNode returns if the node exists on cached trie node in memory.
-func (db *Database) DoesExistCachedNode(hash common.Hash) bool {
+func (db *Database) DoesExistCachedNode(_hash common.ExtHash) bool {
+	// TODO-Klaytn-Pruning: Use ExtHash in DoesExistCachedNode()
+	hash := _hash.Unextend()
 	// Retrieve the node from cache if available
 	db.lock.RLock()
 	_, ok := db.nodes[hash]
@@ -582,7 +588,9 @@ func (db *Database) DoesExistCachedNode(hash common.Hash) bool {
 }
 
 // DoesExistNodeInPersistent returns if the node exists on the persistent database or its cache.
-func (db *Database) DoesExistNodeInPersistent(hash common.Hash) bool {
+func (db *Database) DoesExistNodeInPersistent(_hash common.ExtHash) bool {
+	// TODO-Klaytn-Pruning: Use ExtHash in DoesExistCachedNode()
+	hash := _hash.Unextend()
 	// Retrieve the node from DB cache if available
 	if enc := db.getCachedNode(hash); enc != nil {
 		return true

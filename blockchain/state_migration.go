@@ -64,7 +64,7 @@ func (bc *BlockChain) concurrentRead(db state.Database, quitCh chan struct{}, ha
 		case <-quitCh:
 			return
 		case hash := <-hashCh:
-			data, err := db.TrieDB().NodeFromOld(hash)
+			data, err := db.TrieDB().NodeFromOld(hash.ExtendLegacy()) // does not work with Online Pruning
 			if err != nil {
 				data, err = db.ContractCode(hash)
 			}
