@@ -188,29 +188,38 @@ func (h *hasher) store(n node, db *Database, force bool) (node, uint16) {
 	if _, isHash := n.(hashNode); n == nil || isHash {
 		return n, 0
 	}
+	// hash is for the merkle proof. hash = Keccak(rlp.Encode(nodeForHashing(n)))
+	// lenEncoded is for Database size accounting. lenEncoded = len(rlp.Encode(nodeForStoring(n)))
 	hash, _ := n.cache()
 	lenEncoded := n.lenEncoded()
-	if hash == nil || lenEncoded == 0 {
-		// Generate the RLP encoding of the node
+
+	// Calculate lenEncoded if not set
+	if lenEncoded == 0 {
 		h.tmp.Reset()
-		if err := rlp.Encode(&h.tmp, n); err != nil {
+		if err := rlp.Encode(&h.tmp, h.nodeForStoring(n)); err != nil {
 			panic("encode error: " + err.Error())
 		}
-
 		lenEncoded = uint16(len(h.tmp))
 	}
 	if lenEncoded < 32 && !force {
 		return n, lenEncoded // Nodes smaller than 32 bytes are stored inside their parent
 	}
+
+	// Calculate hash if not set
 	if hash == nil {
+		h.tmp.Reset()
+		if err := rlp.Encode(&h.tmp, h.nodeForHashing(n)); err != nil {
+			panic("encode error: " + err.Error())
+		}
 		hash = h.makeHashNode(h.tmp)
 	}
+
 	if db != nil {
 		// We are pooling the trie nodes into an intermediate memory cache
-		hash := common.BytesToHash(hash)
+		hash := common.BytesToExtHash(hash)
 
 		db.lock.Lock()
-		db.insert(hash.ExtendLegacy(), lenEncoded, n)
+		db.insert(hash, lenEncoded, h.nodeForStoring(n))
 		db.lock.Unlock()
 
 		// Track external references from account->storage trie
@@ -218,12 +227,12 @@ func (h *hasher) store(n node, db *Database, force bool) (node, uint16) {
 			switch n := n.(type) {
 			case *shortNode:
 				if child, ok := n.Val.(valueNode); ok {
-					h.onleaf(nil, nil, child, hash, 0)
+					h.onleaf(nil, nil, child, hash.Unextend(), 0)
 				}
 			case *fullNode:
 				for i := 0; i < 16; i++ {
 					if child, ok := n.Children[i].(valueNode); ok {
-						h.onleaf(nil, nil, child, hash, 0)
+						h.onleaf(nil, nil, child, hash.Unextend(), 0)
 					}
 				}
 			}
@@ -233,9 +242,46 @@ func (h *hasher) store(n node, db *Database, force bool) (node, uint16) {
 }
 
 func (h *hasher) makeHashNode(data []byte) hashNode {
-	n := make(hashNode, h.sha.Size())
+	var hash common.Hash
 	h.sha.Reset()
 	h.sha.Write(data)
-	h.sha.Read(n)
-	return n
+	h.sha.Read(hash[:])
+	return hash.Bytes()
+}
+
+func (h *hasher) nodeForHashing(original node) node {
+	return unextendNode(original, false)
+}
+
+func (h *hasher) nodeForStoring(original node) node {
+	return unextendNode(original, true)
+}
+
+func unextendNode(original node, preserveExtHash bool) node {
+	switch n := original.(type) {
+	case *shortNode:
+		stored := n.copy()
+		stored.Val = unextendNode(n.Val, preserveExtHash)
+		return stored
+	case *fullNode:
+		stored := n.copy()
+		for i, child := range stored.Children {
+			stored.Children[i] = unextendNode(child, preserveExtHash)
+		}
+		return stored
+	case hashNode:
+		exthash := common.BytesToExtHash(n)
+		if exthash.IsLegacy() { // Always unextend ExtHashLegacy
+			return hashNode(exthash.Unextend().Bytes())
+		} else if !preserveExtHash { // It's ExtHash and not preserving ExtHash (for merkle hash)
+			return hashNode(exthash.Unextend().Bytes())
+		} else { // It's ExtHash and preserving ExtHash (for storing)
+			return n
+		}
+	case valueNode:
+		// TODO-Klaytn-Pruning: Unextend account blob
+		return n
+	default:
+		return n
+	}
 }
