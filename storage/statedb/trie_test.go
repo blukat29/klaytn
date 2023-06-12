@@ -755,7 +755,7 @@ func benchmarkDerefRootFixedSize(b *testing.B, addresses [][20]byte, accounts []
 	//_, nodes := trie.Commit(nil)
 	//triedb.Update(NewWithNodeSet(nodes))
 	b.StartTimer()
-	triedb.Dereference(h)
+	triedb.DereferenceRoot(h)
 	b.StopTimer()
 }
 

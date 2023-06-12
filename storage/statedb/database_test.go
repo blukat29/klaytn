@@ -64,7 +64,7 @@ func TestDatabase_DeReference(t *testing.T) {
 	db := NewDatabaseWithNewCache(memDB, &TrieNodeCacheConfig{CacheType: CacheTypeLocal, LocalCacheSizeMiB: 128})
 	assert.Equal(t, 1, len(db.nodes)) // {} : {}
 
-	db.Dereference(parentHash)
+	db.DereferenceRoot(parentHash)
 	assert.Equal(t, 1, len(db.nodes)) // {} : {}
 	assert.Equal(t, uint64(0), db.gcnodes)
 	assert.Equal(t, common.StorageSize(0), db.gcsize)
@@ -81,7 +81,7 @@ func TestDatabase_DeReference(t *testing.T) {
 	assert.Equal(t, uint64(0), db.gcnodes)
 	assert.Equal(t, common.StorageSize(0), db.gcsize)
 
-	db.Dereference(parentHash)
+	db.DereferenceRoot(parentHash)
 	assert.Equal(t, 1, len(db.nodes))
 	assert.Equal(t, uint64(0), child.parents)
 	assert.Equal(t, uint64(0), parent.children[childHash])

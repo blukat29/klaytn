@@ -1049,7 +1049,7 @@ func (bc *BlockChain) Stop() {
 			}
 		}
 		for !bc.triegc.Empty() {
-			triedb.Dereference(bc.triegc.PopItem().(common.Hash))
+			triedb.DereferenceRoot(bc.triegc.PopItem().(common.Hash))
 		}
 		if size, _, _ := triedb.Size(); size != 0 {
 			logger.Error("Dangling trie nodes after full cleanup")
@@ -1388,7 +1388,7 @@ func (bc *BlockChain) gcCachedNodeLoop() {
 						bc.triegc.Push(root, number)
 						break
 					}
-					trieDB.Dereference(root.(common.Hash))
+					trieDB.DereferenceRoot(root.(common.Hash))
 					cnt++
 				}
 				logger.Debug("GC cached node", "currentBlk", blkNum, "chosenBlk", chosen, "deferenceCnt", cnt)

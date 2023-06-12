@@ -383,7 +383,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, notifie
 
 				// Release the parent state because it's already held by the tracer
 				if !common.EmptyHash(parent) {
-					trieDb.Dereference(parent)
+					trieDb.DereferenceRoot(parent)
 				}
 				// Prefer disk if the trie db memory grows too much
 				s1, s2, s3 := trieDb.Size()
@@ -431,7 +431,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, notifie
 
 			// Dereference any parent tries held in memory by this task
 			if res.statedb.Database().TrieDB() != nil {
-				res.statedb.Database().TrieDB().Dereference(res.rootref)
+				res.statedb.Database().TrieDB().DereferenceRoot(res.rootref)
 			}
 			if notifier != nil {
 				// Stream completed traces to the user, aborting on the first error

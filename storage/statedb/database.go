@@ -683,8 +683,9 @@ func (db *Database) reference(_child common.ExtHash, _parent common.ExtHash) {
 	db.nodes[parent].children[child]++
 }
 
-// Dereference removes an existing reference from a root node.
-func (db *Database) Dereference(root common.Hash) {
+// DereferenceRoot removes an existing reference from a root node.
+// root must be a state root.
+func (db *Database) DereferenceRoot(root common.Hash) {
 	// Sanity check to ensure that the meta-root is not removed
 	if common.EmptyHash(root) {
 		logger.Error("Attempted to dereference the trie cache meta root")
@@ -698,7 +699,8 @@ func (db *Database) Dereference(root common.Hash) {
 	defer db.lock.Unlock()
 
 	nodes, storage, start := len(db.nodes), db.nodesSize, time.Now()
-	db.dereference(root, common.Hash{})
+	// TODO-Klaytn-Pruning: Use ExtendRoot
+	db.dereference(root.ExtendLegacy(), common.ExtHash{})
 
 	db.gcnodes += uint64(nodes - len(db.nodes))
 	db.gcsize += storage - db.nodesSize
@@ -713,7 +715,9 @@ func (db *Database) Dereference(root common.Hash) {
 }
 
 // dereference is the private locked version of Dereference.
-func (db *Database) dereference(child common.Hash, parent common.Hash) {
+func (db *Database) dereference(_child common.ExtHash, _parent common.ExtHash) {
+	child := _child.Unextend()
+	parent := _parent.Unextend()
 	// Dereference the parent-child
 	node := db.nodes[parent]
 
@@ -741,7 +745,7 @@ func (db *Database) dereference(child common.Hash, parent common.Hash) {
 		db.removeNodeInFlushList(child)
 		// Dereference all children and delete the node
 		for _, hash := range node.childs() {
-			db.dereference(hash, child)
+			db.dereference(hash.ExtendLegacy(), child.ExtendLegacy())
 		}
 		delete(db.nodes, child)
 		db.nodesSize -= common.StorageSize(common.HashLength + int(node.size))

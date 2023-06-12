@@ -138,7 +138,7 @@ func (cn *CN) stateAtBlock(block *types.Block, reexec uint64, base *state.StateD
 		}
 		database.TrieDB().ReferenceRoot(root)
 		if !common.EmptyHash(parent) {
-			database.TrieDB().Dereference(parent)
+			database.TrieDB().DereferenceRoot(parent)
 		}
 		parent = root
 	}

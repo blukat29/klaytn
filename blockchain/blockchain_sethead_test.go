@@ -146,10 +146,10 @@ func testSetHead(t *testing.T, tt *rewindTest) {
 	}
 	// Manually dereference anything not committed to not have to work with 128+ tries
 	for _, block := range sideblocks {
-		chain.stateCache.TrieDB().Dereference(block.Root())
+		chain.stateCache.TrieDB().DereferenceRoot(block.Root())
 	}
 	for _, block := range canonblocks {
-		chain.stateCache.TrieDB().Dereference(block.Root())
+		chain.stateCache.TrieDB().DereferenceRoot(block.Root())
 	}
 
 	// Set the head of the chain back to the requested number
