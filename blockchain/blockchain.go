@@ -1039,12 +1039,12 @@ func (bc *BlockChain) Stop() {
 		}
 
 		logger.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
-		if err := triedb.Commit(recent.Root(), true, number); err != nil {
+		if err := triedb.CommitRoot(recent.Root(), true, number); err != nil {
 			logger.Error("Failed to commit recent state trie", "err", err)
 		}
 		if snapBase != (common.Hash{}) {
 			logger.Info("Writing snapshot state to disk", "root", snapBase)
-			if err := triedb.Commit(snapBase, true, number); err != nil {
+			if err := triedb.CommitRoot(snapBase, true, number); err != nil {
 				logger.Error("Failed to commit recent state trie", "err", err)
 			}
 		}
@@ -1298,7 +1298,7 @@ func (bc *BlockChain) writeStateTrie(block *types.Block, state *state.StateDB) e
 
 	// If we're running an archive node, always flush
 	if bc.isArchiveMode() {
-		if err := trieDB.Commit(root, false, block.NumberU64()); err != nil {
+		if err := trieDB.CommitRoot(root, false, block.NumberU64()); err != nil {
 			return err
 		}
 
@@ -1327,7 +1327,7 @@ func (bc *BlockChain) writeStateTrie(block *types.Block, state *state.StateDB) e
 
 		if isCommitTrieRequired(bc, block.NumberU64()) {
 			logger.Trace("Commit the state trie into the disk", "blocknum", block.NumberU64())
-			if err := trieDB.Commit(block.Header().Root, true, block.NumberU64()); err != nil {
+			if err := trieDB.CommitRoot(block.Header().Root, true, block.NumberU64()); err != nil {
 				return err
 			}
 

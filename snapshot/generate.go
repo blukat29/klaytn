@@ -443,7 +443,7 @@ func (dl *diskLayer) generateRange(root common.Hash, prefix []byte, kind string,
 		}
 		root, _ := snapTrie.Commit(nil)
 		// TODO-Klaytn update proper block number
-		snapTrieDb.Commit(root, false, 0)
+		snapTrieDb.CommitRoot(root, false, 0)
 	}
 	tr := result.tr
 	if tr == nil {

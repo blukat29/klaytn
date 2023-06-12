@@ -340,7 +340,7 @@ func (g *Genesis) ToBlock(baseStateRoot common.Hash, db database.DBManager) *typ
 	}
 
 	stateDB.Commit(false)
-	stateDB.Database().TrieDB().Commit(root, true, g.Number)
+	stateDB.Database().TrieDB().CommitRoot(root, true, g.Number)
 
 	return types.NewBlock(head, nil, nil)
 }

@@ -906,11 +906,12 @@ func (db *Database) concurrentCommit(hash common.Hash, resultCh chan<- commitRes
 	resultCh <- commitResult{common.Hash{}, nil}
 }
 
-// Commit iterates over all the children of a particular node, writes them out
+// CommitRoot iterates over all the children of a particular node, writes them out
 // to disk, forcefully tearing down all references in both directions.
+// node must be a state root.
 //
 // As a side effect, all pre-images accumulated up to this point are also written.
-func (db *Database) Commit(node common.Hash, report bool, blockNum uint64) error {
+func (db *Database) CommitRoot(node common.Hash, report bool, blockNum uint64) error {
 	// Create a database batch to flush persistent data out. It is important that
 	// outside code doesn't see an inconsistent state (referenced data removed from
 	// memory cache during commit but not yet in persistent database). This is ensured

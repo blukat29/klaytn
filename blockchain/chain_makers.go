@@ -201,7 +201,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			if err != nil {
 				panic(fmt.Sprintf("state write error: %v", err))
 			}
-			if err := stateDB.Database().TrieDB().Commit(root, false, block.NumberU64()); err != nil {
+			if err := stateDB.Database().TrieDB().CommitRoot(root, false, block.NumberU64()); err != nil {
 				panic(fmt.Sprintf("trie write error: %v", err))
 			}
 			return block, b.receipts

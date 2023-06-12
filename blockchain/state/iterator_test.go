@@ -30,7 +30,7 @@ import (
 func TestNodeIteratorCoverage(t *testing.T) {
 	// Create some arbitrary test state to iterate
 	db, root, _ := makeTestState(t)
-	db.TrieDB().Commit(root, false, 0)
+	db.TrieDB().CommitRoot(root, false, 0)
 
 	state, err := New(root, db, nil, nil)
 	if err != nil {

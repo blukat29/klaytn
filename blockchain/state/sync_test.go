@@ -250,7 +250,7 @@ func testIterativeStateSync(t *testing.T, count int, commit bool, bypath bool) {
 	// Create a random state to copy
 	srcState, srcRoot, srcAccounts := makeTestState(t)
 	if commit {
-		srcState.TrieDB().Commit(srcRoot, false, 0)
+		srcState.TrieDB().CommitRoot(srcRoot, false, 0)
 	}
 	srcTrie, _ := statedb.NewTrie(srcRoot, srcState.TrieDB(), nil)
 
@@ -353,8 +353,8 @@ func TestCheckStateConsistencyMissNode(t *testing.T) {
 	srcState, srcRoot, srcAccounts := makeTestState(t)
 	newState, newRoot, _ := makeTestState(t)
 	// commit stateTrie to DB
-	srcState.TrieDB().Commit(srcRoot, false, 0)
-	newState.TrieDB().Commit(newRoot, false, 0)
+	srcState.TrieDB().CommitRoot(srcRoot, false, 0)
+	newState.TrieDB().CommitRoot(newRoot, false, 0)
 
 	isCode := func(hash common.Hash) bool {
 		for _, acc := range srcAccounts {
@@ -423,7 +423,7 @@ func TestCheckStateConsistencyMissNode(t *testing.T) {
 func TestIterativeDelayedStateSync(t *testing.T) {
 	// Create a random state to copy
 	srcState, srcRoot, srcAccounts := makeTestState(t)
-	srcState.TrieDB().Commit(srcRoot, false, 0)
+	srcState.TrieDB().CommitRoot(srcRoot, false, 0)
 
 	// Create a destination state and sync with the scheduler
 	dstDiskDB := database.NewMemoryDBManager()
@@ -478,7 +478,7 @@ func TestIterativeRandomStateSyncBatched(t *testing.T)    { testIterativeRandomS
 func testIterativeRandomStateSync(t *testing.T, count int) {
 	// Create a random state to copy
 	srcState, srcRoot, srcAccounts := makeTestState(t)
-	srcState.TrieDB().Commit(srcRoot, false, 0)
+	srcState.TrieDB().CommitRoot(srcRoot, false, 0)
 
 	// Create a destination state and sync with the scheduler
 	dstDb := database.NewMemoryDBManager()
@@ -535,7 +535,7 @@ func testIterativeRandomStateSync(t *testing.T, count int) {
 func TestIterativeRandomDelayedStateSync(t *testing.T) {
 	// Create a random state to copy
 	srcState, srcRoot, srcAccounts := makeTestState(t)
-	srcState.TrieDB().Commit(srcRoot, false, 0)
+	srcState.TrieDB().CommitRoot(srcRoot, false, 0)
 
 	// Create a destination state and sync with the scheduler
 	dstDb := database.NewMemoryDBManager()
@@ -600,7 +600,7 @@ func TestIterativeRandomDelayedStateSync(t *testing.T) {
 func TestIncompleteStateSync(t *testing.T) {
 	// Create a random state to copy
 	srcState, srcRoot, srcAccounts := makeTestState(t)
-	srcState.TrieDB().Commit(srcRoot, false, 0)
+	srcState.TrieDB().CommitRoot(srcRoot, false, 0)
 
 	// isCode reports whether the hash is contract code hash.
 	isCode := func(hash common.Hash) bool {

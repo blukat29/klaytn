@@ -94,7 +94,7 @@ func TestGeneration(t *testing.T) {
 	root, _ := accTrie.Commit(nil) // Root: 0x4a651234bc4b8c7462b5ad4eb95bbb724eb636fed72bb5278d886f9ea4c345f8
 
 	// TODO-Klaytn-Snapshot update proper block number
-	triedb.Commit(root, false, 0)
+	triedb.CommitRoot(root, false, 0)
 
 	if have, want := root, common.HexToHash("0x4a651234bc4b8c7462b5ad4eb95bbb724eb636fed72bb5278d886f9ea4c345f8"); have != want {
 		t.Fatalf("have %#x want %#x", have, want)
@@ -170,7 +170,7 @@ func TestGenerateExistentState(t *testing.T) {
 
 	root, _ := accTrie.Commit(nil) // Root: 0xe3712f1a226f3782caca78ca770ccc19ee000552813a9f59d479f8611db9b1fd
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(root, false, 0)
+	triedb.CommitRoot(root, false, 0)
 
 	snap := generateSnapshot(diskdb, triedb, 16, root)
 	select {
@@ -262,7 +262,7 @@ func (t *testHelper) makeStorageTrie(keys []string, vals []string) common.Hash {
 func (t *testHelper) Generate() (common.Hash, *diskLayer) {
 	root, _ := t.accTrie.Commit(nil)
 	// TODO-Klaytn-Snapshot input proper block number
-	t.triedb.Commit(root, false, 0)
+	t.triedb.CommitRoot(root, false, 0)
 	snap := generateSnapshot(t.diskdb, t.triedb, 16, root)
 	return root, snap
 }
@@ -466,7 +466,7 @@ func TestGenerateCorruptAccountTrie(t *testing.T) {
 
 	// Delete an account trie leaf and ensure the generator chokes
 	// TODO-Klaytn-Snapshot put propoer block number
-	triedb.Commit(common.HexToHash("0xa04693ea110a31037fb5ee814308a6f1d76bdab0b11676bdf4541d2de55ba978"), false, 0)
+	triedb.CommitRoot(common.HexToHash("0xa04693ea110a31037fb5ee814308a6f1d76bdab0b11676bdf4541d2de55ba978"), false, 0)
 	diskdb.DeleteTrieNode(common.HexToHash("0x65145f923027566669a1ae5ccac66f945b55ff6eaeb17d2ea8e048b7d381f2d7").ExtendLegacy())
 
 	snap := generateSnapshot(diskdb, triedb, 16, common.HexToHash("0xa04693ea110a31037fb5ee814308a6f1d76bdab0b11676bdf4541d2de55ba978"))
@@ -528,7 +528,7 @@ func TestGenerateMissingStorageTrie(t *testing.T) {
 		common.HexToExtHash("0x8c2477df4801bbf88c6636445a2a9feff54c098cc218df403dc3f1007add780c"),
 	)
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(common.HexToHash("0xa2282b99de1fc11e32d26bee37707ef49a6978b2d375796a1b026a497193a2ef"), false, 0)
+	triedb.CommitRoot(common.HexToHash("0xa2282b99de1fc11e32d26bee37707ef49a6978b2d375796a1b026a497193a2ef"), false, 0)
 
 	// Delete a storage trie root and ensure the generator chokes
 	diskdb.DeleteTrieNode(common.HexToHash("0xddefcd9376dd029653ef384bd2f0a126bb755fe84fdcc9e7cf421ba454f2bc67").ExtendLegacy())
@@ -591,7 +591,7 @@ func TestGenerateCorruptStorageTrie(t *testing.T) {
 		common.HexToExtHash("0x8c2477df4801bbf88c6636445a2a9feff54c098cc218df403dc3f1007add780c"),
 	)
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(common.HexToHash("0x4a651234bc4b8c7462b5ad4eb95bbb724eb636fed72bb5278d886f9ea4c345f8"), false, 0)
+	triedb.CommitRoot(common.HexToHash("0x4a651234bc4b8c7462b5ad4eb95bbb724eb636fed72bb5278d886f9ea4c345f8"), false, 0)
 
 	// Delete a storage trie leaf and ensure the generator chokes
 	diskdb.DeleteTrieNode(common.HexToHash("0x18a0f4d79cff4459642dd7604f303886ad9d77c30cf3d7d7cedb3a693ab6d371").ExtendLegacy())
@@ -655,7 +655,7 @@ func TestGenerateWithExtraAccounts(t *testing.T) {
 	root, _ := accTrie.Commit(nil)
 	t.Logf("root: %x", root)
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(root, false, 0)
+	triedb.CommitRoot(root, false, 0)
 	// To verify the test: If we now inspect the snap db, there should exist extraneous storage items
 	if data := diskdb.ReadStorageSnapshot(hashData([]byte("acc-2")), hashData([]byte("b-key-1"))); data == nil {
 		t.Fatalf("expected snap storage to exist")
@@ -712,7 +712,7 @@ func TestGenerateWithManyExtraAccounts(t *testing.T) {
 	root, _ := accTrie.Commit(nil)
 	t.Logf("root: %x", root)
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(root, false, 0)
+	triedb.CommitRoot(root, false, 0)
 
 	snap := generateSnapshot(diskdb, triedb, 16, root)
 	select {
@@ -764,7 +764,7 @@ func TestGenerateWithExtraBeforeAndAfter(t *testing.T) {
 	root, _ := accTrie.Commit(nil)
 	t.Logf("root: %x", root)
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(root, false, 0)
+	triedb.CommitRoot(root, false, 0)
 
 	snap := generateSnapshot(diskdb, triedb, 16, root)
 	select {
@@ -807,7 +807,7 @@ func TestGenerateWithMalformedSnapdata(t *testing.T) {
 	root, _ := accTrie.Commit(nil)
 	t.Logf("root: %x", root)
 	// TODO-Klaytn-Snapshot put proper block number
-	triedb.Commit(root, false, 0)
+	triedb.CommitRoot(root, false, 0)
 
 	snap := generateSnapshot(diskdb, triedb, 16, root)
 	select {

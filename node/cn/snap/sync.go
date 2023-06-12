@@ -779,12 +779,12 @@ func (s *Syncer) loadSyncStatus() {
 func (s *Syncer) saveSyncStatus() {
 	// Serialize any partial progress to disk before spinning down
 	for _, task := range s.tasks {
-		if err := task.trieDb.Commit(task.genTrie.Hash(), false, 0); err != nil {
+		if err := task.trieDb.CommitRoot(task.genTrie.Hash(), false, 0); err != nil {
 			logger.Error("Failed to persist account slots", "err", err)
 		}
 		for _, subtasks := range task.SubTasks {
 			for _, subtask := range subtasks {
-				if err := subtask.trieDb.Commit(subtask.genTrie.Hash(), false, 0); err != nil {
+				if err := subtask.trieDb.CommitRoot(subtask.genTrie.Hash(), false, 0); err != nil {
 					logger.Error("Failed to persist storage slots", "err", err)
 				}
 			}
@@ -2019,7 +2019,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 			}
 			root, _ := tr.Commit(nil)
 			_, nodeSize, _ := db.Size()
-			if err := db.Commit(root, false, 0); err != nil {
+			if err := db.CommitRoot(root, false, 0); err != nil {
 				logger.Error("Failed to persist storage slots", "err", err)
 			} else {
 				s.storageBytes += nodeSize
@@ -2045,7 +2045,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 			root, _ := res.subTask.genTrie.Commit(nil)
 			_, nodeSize, _ := res.subTask.trieDb.Size()
 
-			if err := res.subTask.trieDb.Commit(root, false, 0); err != nil {
+			if err := res.subTask.trieDb.CommitRoot(root, false, 0); err != nil {
 				logger.Error("Failed to persist stack slots", "root", root, "err", err)
 			} else if root == res.subTask.root {
 				s.storageBytes += nodeSize
@@ -2207,7 +2207,7 @@ func (s *Syncer) forwardAccountTask(task *accountTask) {
 		root, _ := task.genTrie.Commit(nil)
 		_, nodeSize, _ := task.trieDb.Size()
 
-		if err := task.trieDb.Commit(root, false, 0); err != nil {
+		if err := task.trieDb.CommitRoot(root, false, 0); err != nil {
 			logger.Error("Failed to persist account slots", "root", root.String(), "err", err)
 		} else {
 			s.accountBytes += nodeSize
