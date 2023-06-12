@@ -246,7 +246,7 @@ func (h *hasher) makeHashNode(data []byte) hashNode {
 	h.sha.Reset()
 	h.sha.Write(data)
 	h.sha.Read(hash[:])
-	return hash.Bytes()
+	return hash.ExtendLegacy().Bytes()
 }
 
 func (h *hasher) nodeForHashing(original node) node {
