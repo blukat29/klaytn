@@ -504,7 +504,7 @@ func (t *Trie) resolve(n node, prefix []byte) (node, error) {
 }
 
 func (t *Trie) resolveHash(n hashNode, prefix []byte) (node, error) {
-	hash := common.BytesToHash(n)
+	hash := common.BytesToExtHash(n)
 	node, fromDB := t.db.node(hash)
 	if t.prefetching && fromDB {
 		memcacheCleanPrefetchMissMeter.Mark(1)
@@ -512,7 +512,7 @@ func (t *Trie) resolveHash(n hashNode, prefix []byte) (node, error) {
 	if node != nil {
 		return node, nil
 	}
-	return nil, &MissingNodeError{NodeHash: hash, Path: prefix}
+	return nil, &MissingNodeError{NodeHash: hash.Unextend(), Path: prefix}
 }
 
 // Hash returns the root hash of the trie. It does not write to the

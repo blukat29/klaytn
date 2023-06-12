@@ -387,7 +387,7 @@ func (db *Database) NodeChildren(hash common.ExtHash) ([]common.ExtHash, error) 
 		return childrenHash, ErrZeroHashNode
 	}
 
-	n, _ := db.node(hash.Unextend())
+	n, _ := db.node(hash)
 	if n == nil {
 		return childrenHash, nil
 	}
@@ -488,7 +488,9 @@ func (db *Database) setCachedNode(hash common.Hash, enc []byte) {
 
 // node retrieves a cached trie node from memory, or returns nil if node can be
 // found in the memory cache.
-func (db *Database) node(hash common.Hash) (n node, fromDB bool) {
+func (db *Database) node(_hash common.ExtHash) (n node, fromDB bool) {
+	// TODO-Klaytn-Pruning: Use ExtHash in node()
+	hash := _hash.Unextend()
 	// Retrieve the node from the trie node cache if available
 	if enc := db.getCachedNode(hash); enc != nil {
 		if dec, err := decodeNode(hash[:], enc); err == nil {
@@ -1145,7 +1147,7 @@ type NodeInfo struct {
 
 // CollectChildrenStats collects the depth of the trie recursively
 func (db *Database) CollectChildrenStats(node common.ExtHash, depth int, resultCh chan<- NodeInfo) {
-	n, _ := db.node(node.Unextend())
+	n, _ := db.node(node)
 	if n == nil {
 		return
 	}
