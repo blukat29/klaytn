@@ -64,6 +64,28 @@ var (
 
 	// metric of total node number
 	memcacheNodesGauge = metrics.NewRegisteredGauge("trie/memcache/nodes", nil)
+
+	/* sentinel is the permenant endpoint of both:
+	- (flush-list) the doubly linked list of db.nodes[] that is yet to be flushed to database.
+	  The list is constructed using flushPrev and flushNext.
+
+	                      oldest         newest
+	                        V              V
+	  [ sentinel ]<-prev-[ 1111 ]<-prev-[ 2222 ]       [ sentinel ]
+	  [          ]       [      ]-next->[      ]-next->[          ]
+
+	- (references) the tree of db.nodes[] that is not to be unloaded from memory.
+	  The tree is constructed using children[].
+
+	  [ sentinel ]-child->[ 1111 ]-child->[ 2222 ]
+	             |               +-child->[ 3333 ]
+	             +-child->[ 4444 ]
+
+	In theory, sentinel can be any non-hash value. In practice, the sentinel
+	must be an empty value so that initializers `&Database{}` and `&cachedNode{}`
+	automatically contain the sentinel.
+	*/
+	sentinel = common.Hash{}
 )
 
 // commitResultChSizeLimit limits the size of channel used for commitResult.
@@ -313,7 +335,7 @@ func NewDatabaseWithNewCache(diskDB database.DBManager, cacheConfig *TrieNodeCac
 
 	return &Database{
 		diskDB:              diskDB,
-		nodes:               map[common.Hash]*cachedNode{{}: {}},
+		nodes:               map[common.Hash]*cachedNode{sentinel: {}},
 		preimages:           make(map[common.Hash][]byte),
 		trieNodeCache:       trieNodeCache,
 		trieNodeCacheConfig: cacheConfig,
@@ -326,7 +348,7 @@ func NewDatabaseWithNewCache(diskDB database.DBManager, cacheConfig *TrieNodeCac
 func NewDatabaseWithExistingCache(diskDB database.DBManager, cache TrieNodeCache) *Database {
 	return &Database{
 		diskDB:        diskDB,
-		nodes:         map[common.Hash]*cachedNode{{}: {}},
+		nodes:         map[common.Hash]*cachedNode{sentinel: {}},
 		preimages:     make(map[common.Hash][]byte),
 		trieNodeCache: cache,
 	}
@@ -383,7 +405,7 @@ func (db *Database) RUnlockGCCachedNode() {
 func (db *Database) NodeChildren(hash common.ExtHash) ([]common.ExtHash, error) {
 	childrenHash := make([]common.ExtHash, 0, 16)
 
-	if (hash.Unextend() == common.Hash{}) {
+	if hash.IsEmpty() {
 		return childrenHash, ErrZeroHashNode
 	}
 
@@ -431,6 +453,7 @@ func (db *Database) insert(_hash common.ExtHash, lenEncoded uint16, node node) {
 		node:      simplifyNode(node),
 		size:      lenEncoded,
 		flushPrev: db.newest,
+		flushNext: sentinel,
 	}
 	for _, child := range entry.childs() {
 		if c := db.nodes[child]; c != nil {
@@ -440,13 +463,13 @@ func (db *Database) insert(_hash common.ExtHash, lenEncoded uint16, node node) {
 	db.nodes[hash] = entry
 
 	// Update the flush-list endpoints
-	if db.oldest == (common.Hash{}) {
+	if db.oldest == sentinel {
 		db.oldest, db.newest = hash, hash
 	} else {
 		if _, ok := db.nodes[db.newest]; !ok {
 			missingNewest := db.newest
 			db.newest = db.getLastNodeHashInFlushList()
-			db.nodes[db.newest].flushNext = common.Hash{}
+			db.nodes[db.newest].flushNext = sentinel
 			logger.Error("Found a newest node for missingNewest", "oldNewest", missingNewest, "newNewest", db.newest)
 		}
 		db.nodes[db.newest].flushNext, db.newest = hash, hash
@@ -524,7 +547,7 @@ func (db *Database) node(_hash common.ExtHash) (n node, fromDB bool) {
 func (db *Database) Node(_hash common.ExtHash) ([]byte, error) {
 	// TODO-Klaytn-Pruning: Use ExtHash in Node()
 	hash := _hash.Unextend()
-	if (hash == common.Hash{}) {
+	if _hash.IsEmpty() {
 		return nil, ErrZeroHashNode
 	}
 	// Retrieve the node from the trie node cache if available
@@ -554,7 +577,7 @@ func (db *Database) Node(_hash common.ExtHash) ([]byte, error) {
 func (db *Database) NodeFromOld(_hash common.ExtHash) ([]byte, error) {
 	// TODO-Klaytn-Pruning: Use ExtHash in NodeFromOld()
 	hash := _hash.Unextend()
-	if (hash == common.Hash{}) {
+	if _hash.IsEmpty() {
 		return nil, ErrZeroHashNode
 	}
 	// Retrieve the node from the trie node cache if available
@@ -633,7 +656,7 @@ func (db *Database) Nodes() []common.ExtHash {
 
 	hashes := make([]common.ExtHash, 0, len(db.nodes))
 	for hash := range db.nodes {
-		if hash != (common.Hash{}) { // Special case for "root" references/nodes
+		if hash != sentinel { // Special case for "root" references/nodes
 			hashes = append(hashes, hash.ExtendLegacy())
 		}
 	}
@@ -650,7 +673,7 @@ func (db *Database) ReferenceRoot(root common.Hash) {
 	defer db.lock.Unlock()
 
 	// TODO-Klaytn-Pruning: Use ExtendRoot
-	db.reference(root.ExtendLegacy(), common.ExtHash{})
+	db.reference(root.ExtendLegacy(), sentinel.ExtendLegacy())
 }
 
 // Reference adds a new reference from a parent node to a child node.
@@ -677,7 +700,7 @@ func (db *Database) reference(_child common.ExtHash, _parent common.ExtHash) {
 	// If the reference already exists, only duplicate for roots
 	if db.nodes[parent].children == nil {
 		db.nodes[parent].children = make(map[common.Hash]uint64)
-	} else if _, ok = db.nodes[parent].children[child]; ok && parent != (common.Hash{}) {
+	} else if _, ok = db.nodes[parent].children[child]; ok && parent != sentinel {
 		return
 	}
 	node.parents++
@@ -701,7 +724,7 @@ func (db *Database) DereferenceRoot(root common.Hash) {
 
 	nodes, storage, start := len(db.nodes), db.nodesSize, time.Now()
 	// TODO-Klaytn-Pruning: Use ExtendRoot
-	db.dereference(root.ExtendLegacy(), common.ExtHash{})
+	db.dereference(root.ExtendLegacy(), sentinel.ExtendLegacy())
 
 	db.gcnodes += uint64(nodes - len(db.nodes))
 	db.gcsize += storage - db.nodesSize
@@ -782,7 +805,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	// Keep committing nodes from the flush-list until we're below allowance
 	oldest := db.oldest
 	batch := db.diskDB.NewBatch(database.StateTrieDB)
-	for size > limit && oldest != (common.Hash{}) {
+	for size > limit && oldest != sentinel {
 		// Fetch the oldest referenced node and push into the batch
 		node := db.nodes[oldest]
 		enc := node.rlp()
@@ -824,10 +847,10 @@ func (db *Database) Cap(limit common.StorageSize) error {
 
 		db.nodesSize -= common.StorageSize(common.HashLength + int(node.size))
 	}
-	if db.oldest != (common.Hash{}) {
-		db.nodes[db.oldest].flushPrev = common.Hash{}
+	if db.oldest != sentinel {
+		db.nodes[db.oldest].flushPrev = sentinel
 	} else {
-		db.newest = common.Hash{}
+		db.newest = sentinel
 	}
 	db.flushnodes += uint64(nodes - len(db.nodes))
 	db.flushsize += nodeSize - db.nodesSize
@@ -1023,7 +1046,7 @@ func (db *Database) verifyIntegrity() {
 	// Iterate over all the cached nodes and accumulate them into a set
 	reachable := map[common.Hash]struct{}{{}: {}}
 
-	for child := range db.nodes[common.Hash{}].children {
+	for child := range db.nodes[sentinel].children {
 		db.accumulate(child, reachable)
 	}
 	// Find any unreachable but cached nodes
@@ -1062,14 +1085,14 @@ func (db *Database) removeNodeInFlushList(hash common.Hash) {
 	}
 
 	if hash == db.oldest && hash == db.newest {
-		db.oldest = common.Hash{}
-		db.newest = common.Hash{}
+		db.oldest = sentinel
+		db.newest = sentinel
 	} else if hash == db.oldest {
 		db.oldest = node.flushNext
-		db.nodes[node.flushNext].flushPrev = common.Hash{}
+		db.nodes[node.flushNext].flushPrev = sentinel
 	} else if hash == db.newest {
 		db.newest = node.flushPrev
-		db.nodes[node.flushPrev].flushNext = common.Hash{}
+		db.nodes[node.flushPrev].flushNext = sentinel
 	} else {
 		db.nodes[node.flushPrev].flushNext = node.flushNext
 		db.nodes[node.flushNext].flushPrev = node.flushPrev
@@ -1087,7 +1110,7 @@ func (db *Database) getLastNodeHashInFlushList() common.Hash {
 			break
 		}
 
-		if db.nodes[nodeHash].flushNext != (common.Hash{}) {
+		if db.nodes[nodeHash].flushNext != sentinel {
 			nodeHash = db.nodes[nodeHash].flushNext
 		} else {
 			logger.Debug("found last noode in map of flush list")
