@@ -105,6 +105,8 @@ func TestExtHash(t *testing.T) {
 	assert.False(t, eh.IsLegacy())
 	assert.True(t, h.ExtendRoot().IsRoot())
 	assert.True(t, h.ExtendLegacy().IsLegacy())
+	assert.False(t, eh.IsEmpty())
+	assert.True(t, Hash{}.ExtendLegacy().IsEmpty())
 
 	assert.False(t, EmptyExtHash(eh))
 	assert.True(t, EmptyExtHash(Hash{}.ExtendRoot()))

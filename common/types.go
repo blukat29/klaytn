@@ -276,6 +276,10 @@ func (eh ExtHash) Nonce() ExtHashNonce {
 	return nonce
 }
 
+func (eh ExtHash) IsEmpty() bool {
+	return EmptyHash(eh.Unextend())
+}
+
 func (eh ExtHash) IsRoot() bool {
 	return bytes.Equal(eh.Nonce().Bytes(), extHashRootNonce[:])
 }
