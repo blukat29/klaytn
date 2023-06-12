@@ -520,7 +520,7 @@ func (t *Trie) resolveHash(n hashNode, prefix []byte) (node, error) {
 func (t *Trie) Hash() common.Hash {
 	hash, cached := t.hashRoot(nil, nil)
 	t.root = cached
-	return common.BytesToHash(hash.(hashNode))
+	return hash
 }
 
 // Commit writes all nodes to the trie's memory database, tracking the internal
@@ -531,16 +531,19 @@ func (t *Trie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
 	}
 	hash, cached := t.hashRoot(t.db, onleaf)
 	t.root = cached
-	return common.BytesToHash(hash.(hashNode)), nil
+	return hash, nil
 }
 
-func (t *Trie) hashRoot(db *Database, onleaf LeafCallback) (node, node) {
+func (t *Trie) hashRoot(db *Database, onleaf LeafCallback) (common.Hash, node) {
 	if t.root == nil {
-		return hashNode(emptyRoot.Bytes()), nil
+		return emptyRoot, nil
 	}
 	h := newHasher(onleaf)
 	defer returnHasherToPool(h)
-	return h.hashRoot(t.root, db, true)
+
+	hashed, cached := h.hashRoot(t.root, db, true)
+	hash := common.BytesToExtHash(hashed.(hashNode)).Unextend()
+	return hash, cached
 }
 
 func GetHashAndHexKey(key []byte) ([]byte, []byte) {
