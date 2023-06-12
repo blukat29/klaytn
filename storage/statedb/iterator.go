@@ -313,8 +313,8 @@ func (it *nodeIterator) peek(descend bool) (*nodeIteratorState, *int, []byte, er
 
 func (it *nodeIterator) resolveHash(hash hashNode, path []byte) (node, error) {
 	if it.resolver != nil {
-		hash := common.BytesToHash(hash)
-		enc, _ := it.resolver.ReadTrieNode(hash.ExtendLegacy())
+		hash := common.BytesToExtHash(hash)
+		enc, _ := it.resolver.ReadTrieNode(hash)
 		if enc != nil {
 			if resolved, err := decodeNode(hash[:], enc); err == nil {
 				return resolved, nil
@@ -331,7 +331,7 @@ func (st *nodeIteratorState) resolve(it *nodeIterator, path []byte) error {
 			return err
 		}
 		st.node = resolved
-		st.hash = common.BytesToHash(hash)
+		st.hash = common.BytesToExtHash(hash).Unextend()
 	}
 	return nil
 }
@@ -345,7 +345,7 @@ func (it *nodeIterator) nextChild(parent *nodeIteratorState, ancestor common.Has
 			if child != nil {
 				hash, _ := child.cache()
 				state := &nodeIteratorState{
-					hash:    common.BytesToHash(hash),
+					hash:    common.BytesToExtHash(hash).Unextend(),
 					node:    child,
 					parent:  ancestor,
 					index:   -1,
@@ -361,7 +361,7 @@ func (it *nodeIterator) nextChild(parent *nodeIteratorState, ancestor common.Has
 		if parent.index < 0 {
 			hash, _ := node.Val.cache()
 			state := &nodeIteratorState{
-				hash:    common.BytesToHash(hash),
+				hash:    common.BytesToExtHash(hash).Unextend(),
 				node:    node.Val,
 				parent:  ancestor,
 				index:   -1,
