@@ -258,6 +258,7 @@ func (dl *diffLayer) Stale() bool {
 // the snapshot slim data format.
 func (dl *diffLayer) Account(hash common.Hash) (account.Account, error) {
 	data, err := dl.AccountRLP(hash)
+	fmt.Printf("-- dl.Account-RLP %x %s\n", data, err)
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +269,7 @@ func (dl *diffLayer) Account(hash common.Hash) (account.Account, error) {
 	if err := rlp.DecodeBytes(data, serializer); err != nil {
 		panic(err)
 	}
+	fmt.Printf("-- dl.Account-ser %s\n", serializer.GetAccount())
 	return serializer.GetAccount(), nil
 }
 
@@ -293,10 +295,14 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	// diff layers, reach straight into the bottom persistent disk layer
 	if origin != nil {
 		snapshotBloomAccountMissMeter.Mark(1)
-		return origin.AccountRLP(hash)
+		out, err := origin.AccountRLP(hash)
+		fmt.Println("-- dl.AccountRLP-mis", hash.Hex(), out, err)
+		return out, err
 	}
 	// The bloom filter hit, start poking in the internal maps
-	return dl.accountRLP(hash, 0)
+	out, err := dl.accountRLP(hash, 0)
+	fmt.Println("-- dl.AccountRLP-hit", hash.Hex(), out, err)
+	return out, err
 }
 
 // accountRLP is an internal version of AccountRLP that skips the bloom filter

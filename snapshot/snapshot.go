@@ -273,6 +273,7 @@ func (t *Tree) Disable() {
 			layer.lock.Lock()
 			layer.stale = true
 			layer.lock.Unlock()
+			fmt.Println("--- stale-Disable")
 
 		case *diffLayer:
 			// If the layer is a simple diff, simply mark as stale
@@ -548,6 +549,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	}
 	base.stale = true
 	base.lock.Unlock()
+	fmt.Println("--- stale-diffToDisk")
 
 	// Destroy all the destructed accounts from the database
 	for hash := range bottom.destructSet {
@@ -586,6 +588,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 			continue
 		}
 		// Push the account to disk
+		fmt.Printf("Flush <%s>:<%x>\n", hash.Hex(), data)
 		batch.WriteAccountSnapshot(hash, data)
 		base.cache.Set(hash[:], data)
 		snapshotCleanAccountWriteMeter.Mark(int64(len(data)))
@@ -728,6 +731,7 @@ func (t *Tree) Rebuild(root common.Hash) {
 			layer.lock.Lock()
 			layer.stale = true
 			layer.lock.Unlock()
+			fmt.Println("--- stale-Rebuild")
 
 		case *diffLayer:
 			// If the layer is a simple diff, simply mark as stale

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/klaytn/klaytn/blockchain/types/account"
+	"github.com/klaytn/klaytn/common/hexutil"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/klaytn/klaytn/storage/database"
@@ -63,6 +64,7 @@ func randomAccount() []byte {
 
 	serializer := account.NewAccountSerializerWithAccount(acc)
 	data, _ := rlp.EncodeToBytes(serializer)
+	fmt.Println("serialized", hexutil.Encode(data))
 	return data
 }
 
@@ -238,6 +240,7 @@ func TestDiffLayerExternalInvalidationPartialFlatten(t *testing.T) {
 	if err := snaps.Cap(common.HexToHash("0x04"), 1); err != nil {
 		t.Fatalf("failed to flatten diff layer into accumulator: %v", err)
 	}
+	fmt.Println("ssssssssss")
 	// Since the accumulator diff layer was modified, ensure that data retrievald on the external reference fail
 	if acc, err := ref.Account(common.HexToHash("0x01")); err != ErrSnapshotStale {
 		t.Errorf("stale reference returned account: %#x (err: %v)", acc, err)

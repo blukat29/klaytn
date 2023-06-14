@@ -22,6 +22,7 @@ package snapshot
 
 import (
 	"bytes"
+	"fmt"
 	"sync"
 
 	"github.com/klaytn/klaytn/blockchain/types/account"
@@ -95,6 +96,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	// If the layer was flattened into, consider it invalid (any live reference to
 	// the original should be marked as unusable).
 	if dl.stale {
+		fmt.Println("-- disk.AccountRLP stale")
 		return nil, ErrSnapshotStale
 	}
 	// If the layer is being generated, ensure the requested hash has already been
@@ -109,6 +111,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	if blob, found := dl.cache.HasGet(nil, hash[:]); found {
 		snapshotCleanAccountHitMeter.Mark(1)
 		snapshotCleanAccountReadMeter.Mark(int64(len(blob)))
+		fmt.Printf("-- disk.AccountRLP-cached <%s>:<%x>\n", hash.Hex(), blob)
 		return blob, nil
 	}
 	// Cache doesn't contain account, pull from disk and cache for later
@@ -121,6 +124,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	} else {
 		snapshotCleanAccountInexMeter.Mark(1)
 	}
+	fmt.Printf("-- disk.AccountRLP-db.Read <%s>:<%x>\n", hash.Hex(), blob)
 	return blob, nil
 }
 
