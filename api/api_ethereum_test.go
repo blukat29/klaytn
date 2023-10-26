@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/klaytn/klaytn/consensus"
-	"github.com/klaytn/klaytn/crypto"
 	"github.com/klaytn/klaytn/governance"
 
 	"github.com/golang/mock/gomock"
@@ -28,7 +27,7 @@ import (
 	"github.com/klaytn/klaytn/common"
 	"github.com/klaytn/klaytn/common/hexutil"
 	"github.com/klaytn/klaytn/consensus/gxhash"
-	"github.com/klaytn/klaytn/consensus/mocks"
+	mock_consensus "github.com/klaytn/klaytn/consensus/mocks"
 	"github.com/klaytn/klaytn/networks/rpc"
 	"github.com/klaytn/klaytn/params"
 	"github.com/klaytn/klaytn/rlp"
@@ -36,909 +35,922 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var dummyChainConfigForEthereumAPITest = &params.ChainConfig{
-	ChainID:                  new(big.Int).SetUint64(111111),
-	IstanbulCompatibleBlock:  new(big.Int).SetUint64(0),
-	LondonCompatibleBlock:    new(big.Int).SetUint64(0),
-	EthTxTypeCompatibleBlock: new(big.Int).SetUint64(0),
-	UnitPrice:                25000000000, // 25 ston
-}
-
-// TestEthereumAPI_Etherbase tests Etherbase.
-func TestEthereumAPI_Etherbase(t *testing.T) {
-	testNodeAddress(t, "Etherbase")
-}
-
-// TestEthereumAPI_Coinbase tests Coinbase.
-func TestEthereumAPI_Coinbase(t *testing.T) {
-	testNodeAddress(t, "Coinbase")
-}
-
-// testNodeAddress generates nodeAddress and tests Etherbase and Coinbase.
-func testNodeAddress(t *testing.T, testAPIName string) {
-	gov := governance.NewMixedEngineNoInit(
-		dummyChainConfigForEthereumAPITest,
-		database.NewMemoryDBManager(),
-	)
-	key, _ := crypto.GenerateKey()
-	nodeAddress := crypto.PubkeyToAddress(key.PublicKey)
-	gov.SetNodeAddress(nodeAddress)
-
-	api := EthereumAPI{governanceAPI: governance.NewGovernanceAPI(gov)}
-	results := reflect.ValueOf(&api).MethodByName(testAPIName).Call([]reflect.Value{})
-	result, ok := results[0].Interface().(common.Address)
-	assert.True(t, ok)
-	assert.Equal(t, nodeAddress, result)
-}
-
-// TestEthereumAPI_Hashrate tests Hasharate.
-func TestEthereumAPI_Hashrate(t *testing.T) {
-	api := &EthereumAPI{}
-	assert.Equal(t, hexutil.Uint64(ZeroHashrate), api.Hashrate())
-}
-
-// TestEthereumAPI_Mining tests Mining.
-func TestEthereumAPI_Mining(t *testing.T) {
-	api := &EthereumAPI{}
-	assert.Equal(t, false, api.Mining())
-}
-
-// TestEthereumAPI_GetWork tests GetWork.
-func TestEthereumAPI_GetWork(t *testing.T) {
-	api := &EthereumAPI{}
-	_, err := api.GetWork()
-	assert.Equal(t, errNoMiningWork, err)
-}
-
-// TestEthereumAPI_SubmitWork tests SubmitWork.
-func TestEthereumAPI_SubmitWork(t *testing.T) {
-	api := &EthereumAPI{}
-	assert.Equal(t, false, api.SubmitWork(BlockNonce{}, common.Hash{}, common.Hash{}))
-}
-
-// TestEthereumAPI_SubmitHashrate tests SubmitHashrate.
-func TestEthereumAPI_SubmitHashrate(t *testing.T) {
-	api := &EthereumAPI{}
-	assert.Equal(t, false, api.SubmitHashrate(hexutil.Uint64(0), common.Hash{}))
-}
-
-// TestEthereumAPI_GetHashrate tests GetHashrate.
-func TestEthereumAPI_GetHashrate(t *testing.T) {
-	api := &EthereumAPI{}
-	assert.Equal(t, ZeroHashrate, api.GetHashrate())
-}
-
-// TestEthereumAPI_GetUncleByBlockNumberAndIndex tests GetUncleByBlockNumberAndIndex.
-func TestEthereumAPI_GetUncleByBlockNumberAndIndex(t *testing.T) {
-	api := &EthereumAPI{}
-	uncleBlock, err := api.GetUncleByBlockNumberAndIndex(context.Background(), rpc.BlockNumber(0), hexutil.Uint(0))
-	assert.NoError(t, err)
-	assert.Nil(t, uncleBlock)
-}
-
-// TestEthereumAPI_GetUncleByBlockHashAndIndex tests GetUncleByBlockHashAndIndex.
-func TestEthereumAPI_GetUncleByBlockHashAndIndex(t *testing.T) {
-	api := &EthereumAPI{}
-	uncleBlock, err := api.GetUncleByBlockHashAndIndex(context.Background(), common.Hash{}, hexutil.Uint(0))
-	assert.NoError(t, err)
-	assert.Nil(t, uncleBlock)
-}
-
-// TestTestEthereumAPI_GetUncleCountByBlockNumber tests GetUncleCountByBlockNumber.
-func TestTestEthereumAPI_GetUncleCountByBlockNumber(t *testing.T) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-	block, _, _, _, _ := createTestData(t, nil)
-
-	// For existing block number, it must return 0.
-	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil)
-	existingBlockNumber := rpc.BlockNumber(block.Number().Int64())
-	assert.Equal(t, hexutil.Uint(ZeroUncleCount), *api.GetUncleCountByBlockNumber(context.Background(), existingBlockNumber))
-
-	// For non-existing block number, it must return nil.
-	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
-	nonExistingBlockNumber := rpc.BlockNumber(5)
-	uncleCount := api.GetUncleCountByBlockNumber(context.Background(), nonExistingBlockNumber)
-	uintNil := hexutil.Uint(uint(0))
-	expectedResult := &uintNil
-	expectedResult = nil
-	assert.Equal(t, expectedResult, uncleCount)
-
-	mockCtrl.Finish()
-}
-
-// TestTestEthereumAPI_GetUncleCountByBlockHash tests GetUncleCountByBlockHash.
-func TestTestEthereumAPI_GetUncleCountByBlockHash(t *testing.T) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-	block, _, _, _, _ := createTestData(t, nil)
-
-	// For existing block hash, it must return 0.
-	mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(block, nil)
-	existingHash := block.Hash()
-	assert.Equal(t, hexutil.Uint(ZeroUncleCount), *api.GetUncleCountByBlockHash(context.Background(), existingHash))
-
-	// For non-existing block hash, it must return nil.
-	mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(nil, nil)
-	nonExistingHash := block.Hash()
-	uncleCount := api.GetUncleCountByBlockHash(context.Background(), nonExistingHash)
-	uintNil := hexutil.Uint(uint(0))
-	expectedResult := &uintNil
-	expectedResult = nil
-	assert.Equal(t, expectedResult, uncleCount)
-
-	mockCtrl.Finish()
-}
-
-// TestEthereumAPI_GetHeaderByNumber tests GetHeaderByNumber.
-func TestEthereumAPI_GetHeaderByNumber(t *testing.T) {
-	testGetHeader(t, "GetHeaderByNumber", true)
-}
-
-// TestEthereumAPI_GetHeaderByHash tests GetHeaderByNumber.
-func TestEthereumAPI_GetHeaderByHash(t *testing.T) {
-	testGetHeader(t, "GetHeaderByHash", true)
-}
-
-// TestEthereumAPI_GetHeaderByNumber tests GetHeaderByNumber.
-func TestEthereumAPI_GetHeaderByNumber_BeforeEnableFork(t *testing.T) {
-	testGetHeader(t, "GetHeaderByNumber", false)
-}
-
-// TestEthereumAPI_GetHeaderByHash tests GetHeaderByNumber.
-func TestEthereumAPI_GetHeaderByHash_BeforeEnableFork(t *testing.T) {
-	testGetHeader(t, "GetHeaderByHash", false)
-}
-
-// testGetHeader generates data to test GetHeader related functions in EthereumAPI
-// and actually tests the API function passed as a parameter.
-func testGetHeader(t *testing.T, testAPIName string, forkEnabled bool) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-
-	// Creates a MockEngine.
-	mockEngine := mocks.NewMockEngine(mockCtrl)
-	// GetHeader APIs calls internally below methods.
-	mockBackend.EXPECT().Engine().Return(mockEngine)
-	if forkEnabled {
-		mockBackend.EXPECT().ChainConfig().Return(dummyChainConfigForEthereumAPITest)
-	} else {
-		chainConfigForNotCompatibleEthBlock := &params.ChainConfig{
-			ChainID:                  dummyChainConfigForEthereumAPITest.ChainID,
-			IstanbulCompatibleBlock:  dummyChainConfigForEthereumAPITest.IstanbulCompatibleBlock,
-			LondonCompatibleBlock:    dummyChainConfigForEthereumAPITest.LondonCompatibleBlock,
-			EthTxTypeCompatibleBlock: nil,
-			UnitPrice:                dummyChainConfigForEthereumAPITest.UnitPrice,
-		}
-		mockBackend.EXPECT().ChainConfig().Return(chainConfigForNotCompatibleEthBlock)
+var (
+	// Deprecated: in favor of testChainConfigEthCompat
+	dummyChainConfigForEthereumAPITest = &params.ChainConfig{
+		ChainID:                  new(big.Int).SetUint64(111111),
+		IstanbulCompatibleBlock:  new(big.Int).SetUint64(0),
+		LondonCompatibleBlock:    new(big.Int).SetUint64(0),
+		EthTxTypeCompatibleBlock: new(big.Int).SetUint64(0),
+		UnitPrice:                25000000000, // 25 ston
 	}
 
-	// Author is called when calculates miner field of Header.
-	dummyMiner := common.HexToAddress("0x9712f943b296758aaae79944ec975884188d3a96")
-	mockEngine.EXPECT().Author(gomock.Any()).Return(dummyMiner, nil)
-	var dummyTotalDifficulty uint64 = 5
-	mockBackend.EXPECT().GetTd(gomock.Any()).Return(new(big.Int).SetUint64(dummyTotalDifficulty))
+	testLondonConfig = &params.ChainConfig{
+		ChainID:                 new(big.Int).SetUint64(111111),
+		IstanbulCompatibleBlock: common.Big0,
+		LondonCompatibleBlock:   common.Big0,
+		UnitPrice:               25000000000,
+	}
+	testEthTxTypeConfig = &params.ChainConfig{
+		ChainID:                  new(big.Int).SetUint64(111111),
+		IstanbulCompatibleBlock:  common.Big0,
+		LondonCompatibleBlock:    common.Big0,
+		EthTxTypeCompatibleBlock: common.Big0,
+		UnitPrice:                25000000000, // 25 ston
+	}
+	testMagmaConfig = &params.ChainConfig{
+		ChainID:                  new(big.Int).SetUint64(111111),
+		IstanbulCompatibleBlock:  common.Big0,
+		LondonCompatibleBlock:    common.Big0,
+		EthTxTypeCompatibleBlock: common.Big0,
+		MagmaCompatibleBlock:     common.Big0,
+		UnitPrice:                25000000000, // 25 ston
+	}
+	testRandaoConfig = &params.ChainConfig{
+		ChainID:                  new(big.Int).SetUint64(111111),
+		IstanbulCompatibleBlock:  common.Big0,
+		LondonCompatibleBlock:    common.Big0,
+		EthTxTypeCompatibleBlock: common.Big0,
+		MagmaCompatibleBlock:     common.Big0,
+		KoreCompatibleBlock:      common.Big0,
+		ShanghaiCompatibleBlock:  common.Big0,
+		CancunCompatibleBlock:    common.Big0,
+		RandaoCompatibleBlock:    common.Big0,
+		UnitPrice:                25000000000, // 25 ston
+	}
 
-	// Create dummy header
-	header := types.CopyHeader(&types.Header{
-		ParentHash:  common.HexToHash("0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348"),
-		Rewardbase:  common.Address{},
-		TxHash:      common.HexToHash("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-		Root:        common.HexToHash("0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9"),
-		ReceiptHash: common.HexToHash("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-		Bloom:       types.Bloom{},
-		BlockScore:  new(big.Int).SetUint64(1),
-		Number:      new(big.Int).SetUint64(4),
-		GasUsed:     uint64(10000),
-		Time:        new(big.Int).SetUint64(1641363540),
-		TimeFoS:     uint8(85),
-		Extra:       common.Hex2Bytes("0xd983010701846b6c617988676f312e31362e338664617277696e000000000000f89ed5949712f943b296758aaae79944ec975884188d3a96b8415a0614be7fd5ea40f11ce558e02993bd55f11ae72a3cfbc861875a57483ec5ec3adda3e5845fd7ab271d670c755480f9ef5b8dd731f4e1f032fff5d165b763ac01f843b8418867d3733167a0c737fa5b62dcc59ec3b0af5748bcc894e7990a0b5a642da4546713c9127b3358cdfe7894df1ca1db5a97560599986d7f1399003cd63660b98200"),
-		Governance:  []byte{},
-		Vote:        []byte{},
+	// To be filled by fillTestData()
+	testChainConfig *params.ChainConfig
+	testNodeAddr    common.Address
+	testAuthor      common.Address
+	testTd          *big.Int
+
+	testHeader       *types.Header
+	testHeaderMap    map[string]interface{} // expected getHeader(num)
+	testBlock        *types.Block
+	testBlockMapFull map[string]interface{} // expected getBlock(num, true)
+	testBlockMapHash map[string]interface{} // expected getBlock(num, false)
+
+	testTxObjects        []interface{}
+	testTxObjectsPending []interface{} // tx object without block info (blockNum, blockHash, txIndex)
+	testReceipts         []interface{}
+
+	// TODO: make named error types
+	testErrUnknownHeader error
+	testErrUnknownBlock  error
+)
+
+func TestEthAPI(t *testing.T) {
+	// Generate test data
+	blockchain.InitDeriveSha(testLondonConfig)
+	fillTestData(t, testLondonConfig)
+
+	// param shortcuts
+	var (
+		bg      = context.Background()
+		hash0   = common.Hash{}
+		hashAny = common.HexToHash("0x1234")
+		num0    = rpc.BlockNumber(0)
+		numAny  = rpc.BlockNumber(4)
+		u64_0   = hexutil.Uint64(0)
+		uint0   = hexutil.Uint(0)
+		uintNil = (*hexutil.Uint)(nil)
+		mapNil  = (map[string]interface{})(nil)
+	)
+
+	// Simple constant values
+	testEthApiCall(t, nil, u64_0, "Hashrate")
+	testEthApiCall(t, nil, false, "Mining")
+	testEthApiFail(t, nil, errNoMiningWork, "GetWork")
+	testEthApiCall(t, nil, false, "SubmitWork", BlockNonce{}, hash0, hash0)
+	testEthApiCall(t, nil, false, "SubmitHashrate", u64_0, hash0)
+	testEthApiCall(t, nil, ZeroHashrate, "GetHashrate")
+	testEthApiCall(t, nil, map[string]interface{}(nil), "GetUncleByBlockNumberAndIndex", bg, num0, uint0)
+	testEthApiCall(t, nil, map[string]interface{}(nil), "GetUncleByBlockHashAndIndex", bg, hash0, uint0)
+
+	// Governance NodeAddress
+	testEthApiCall(t, []mockFunc{mockNodeAddress}, testNodeAddr, "Etherbase")
+	testEthApiCall(t, []mockFunc{mockNodeAddress}, testNodeAddr, "Coinbase")
+
+	// Uncle count
+	testEthApiCall(t, []mockFunc{mockBlock}, &uint0, "GetUncleCountByBlockNumber", bg, numAny)
+	testEthApiCall(t, []mockFunc{mockBlock}, &uint0, "GetUncleCountByBlockHash", bg, hashAny)
+	testEthApiCall(t, []mockFunc{mockNoBlock}, uintNil, "GetUncleCountByBlockNumber", bg, numAny)
+	testEthApiCall(t, []mockFunc{mockNoBlock}, uintNil, "GetUncleCountByBlockHash", bg, hashAny)
+
+	// Headers and blocks, not found cases. Returns null instaed of error.
+	testEthApiCall(t, []mockFunc{mockNoBlock}, mapNil, "GetHeaderByNumber", bg, numAny)
+	testEthApiCall(t, []mockFunc{mockNoBlock}, mapNil, "GetHeaderByHash", bg, hashAny)
+	testEthApiCall(t, []mockFunc{mockNoBlock}, mapNil, "GetBlockByNumber", bg, numAny, false)
+	testEthApiCall(t, []mockFunc{mockNoBlock}, mapNil, "GetBlockByHash", bg, hashAny, false)
+
+	// Below APIs show different behaviors according to hardfork status
+	configs := []*params.ChainConfig{
+		testLondonConfig,
+		testEthTxTypeConfig,
+		testMagmaConfig,
+		testRandaoConfig,
+	}
+	for _, config := range configs {
+		fillTestData(t, config)
+		// headers and blocks
+		testEthApiJson(t, []mockFunc{mockBlock}, testHeaderMap, "GetHeaderByNumber", bg, numAny)
+		testEthApiJson(t, []mockFunc{mockBlock}, testHeaderMap, "GetHeaderByHash", bg, hashAny)
+		testEthApiJson(t, []mockFunc{mockBlock}, testBlockMapHash, "GetBlockByNumber", bg, numAny, false)
+		testEthApiJson(t, []mockFunc{mockBlock}, testBlockMapFull, "GetBlockByNumber", bg, numAny, true)
+		testEthApiJson(t, []mockFunc{mockBlock}, testBlockMapHash, "GetBlockByHash", bg, hashAny, false)
+		testEthApiJson(t, []mockFunc{mockBlock}, testBlockMapFull, "GetBlockByHash", bg, hashAny, true)
+	}
+
+	// Transactions and receipts
+	testEthApiForTxIndex(t, []mockFunc{mockBlock}, testTxObjects, "GetTransactionByBlockNumberAndIndex", bg, numAny)
+	testEthApiForTxIndex(t, []mockFunc{mockBlock}, testTxObjects, "GetTransactionByBlockHashAndIndex", bg, hashAny)
+	testEthApiForTxHash(t, []mockFunc{mockBlock, mockChainDBTx}, testTxObjects,
+		"GetTransactionByHash", bg)
+	testEthApiForTxHash(t, []mockFunc{mockBlock, mockChainDBNoTx, mockPoolTx}, testTxObjectsPending,
+		"GetTransactionByHash", bg)
+	t.Run("PendingTransactions", testEthereumAPI_PendingTransactions)
+	testEthApiForTxHash(t, []mockFunc{mockBlock, mockReceipt}, testReceipts, "GetTransactionReceipt", bg)
+}
+
+func testEthApiFail(t *testing.T, injects []mockFunc, expected error, method string, params ...interface{}) {
+	t.Run(method, func(t *testing.T) {
+		_, err := mockCallEthApi(t, injects, method, params...)
+		assert.ErrorIs(t, err, expected)
 	})
-
-	var blockParam interface{}
-	switch testAPIName {
-	case "GetHeaderByNumber":
-		blockParam = rpc.BlockNumber(header.Number.Uint64())
-		mockBackend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(header, nil)
-	case "GetHeaderByHash":
-		blockParam = header.Hash()
-		mockBackend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(header, nil)
-	}
-
-	results := reflect.ValueOf(&api).MethodByName(testAPIName).Call(
-		[]reflect.Value{
-			reflect.ValueOf(context.Background()),
-			reflect.ValueOf(blockParam),
-		},
-	)
-	ethHeader, ok := results[0].Interface().(map[string]interface{})
-	assert.Equal(t, true, ok)
-	assert.NotEqual(t, ethHeader, nil)
-
-	// We can get a real mashaled data by using real backend instance, not mock
-	// Mock just return a header instance, not rlp decoded json data
-	expected := make(map[string]interface{})
-	assert.NoError(t, json.Unmarshal([]byte(`
-	{
-	  "jsonrpc": "2.0",
-	  "id": 1,
-	  "result": {
-		"difficulty": "0x1",
-		"extraData": "0x",
-		"gasLimit": "0xe8d4a50fff",
-		"gasUsed": "0x2710",
-		"hash": "0xd6d5d8295f612bc824762f1945f4271c73aee9306bcf91e151d269369526ba60",
-		"logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-		"miner": "0x9712f943b296758aaae79944ec975884188d3a96",
-		"mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-		"nonce": "0x0000000000000000",
-		"number": "0x4",
-		"parentHash": "0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348",
-		"receiptsRoot": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-		"sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-		"size": "0x244",
-		"stateRoot": "0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9",
-		"timestamp": "0x61d53854",
-		"totalDifficulty": "0x5",
-		"transactionsRoot": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-	  }
-	}
-    `), &expected))
-	if forkEnabled {
-		expected["baseFeePerGas"] = "0x0"
-	}
-	checkEthereumBlockOrHeaderFormat(t, expected, ethHeader)
 }
 
-// TestEthereumAPI_GetBlockByNumber tests GetBlockByNumber.
-func TestEthereumAPI_GetBlockByNumber(t *testing.T) {
-	testGetBlock(t, "GetBlockByNumber", false)
-	testGetBlock(t, "GetBlockByNumber", true)
-}
-
-// TestEthereumAPI_GetBlockByHash tests GetBlockByHash.
-func TestEthereumAPI_GetBlockByHash(t *testing.T) {
-	testGetBlock(t, "GetBlockByHash", false)
-	testGetBlock(t, "GetBlockByHash", true)
-}
-
-// testGetBlock generates data to test GetBlock related functions in EthereumAPI
-// and actually tests the API function passed as a parameter.
-func testGetBlock(t *testing.T, testAPIName string, fullTxs bool) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-
-	// Creates a MockEngine.
-	mockEngine := mocks.NewMockEngine(mockCtrl)
-	// GetHeader APIs calls internally below methods.
-	mockBackend.EXPECT().Engine().Return(mockEngine)
-	mockBackend.EXPECT().ChainConfig().Return(dummyChainConfigForEthereumAPITest)
-	// Author is called when calculates miner field of Header.
-	dummyMiner := common.HexToAddress("0x9712f943b296758aaae79944ec975884188d3a96")
-	mockEngine.EXPECT().Author(gomock.Any()).Return(dummyMiner, nil)
-	var dummyTotalDifficulty uint64 = 5
-	mockBackend.EXPECT().GetTd(gomock.Any()).Return(new(big.Int).SetUint64(dummyTotalDifficulty))
-
-	// Create dummy header
-	header := types.CopyHeader(&types.Header{
-		ParentHash: common.HexToHash("0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348"), Rewardbase: common.Address{}, TxHash: common.HexToHash("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-		Root:        common.HexToHash("0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9"),
-		ReceiptHash: common.HexToHash("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-		Bloom:       types.Bloom{},
-		BlockScore:  new(big.Int).SetUint64(1),
-		Number:      new(big.Int).SetUint64(4),
-		GasUsed:     uint64(10000),
-		Time:        new(big.Int).SetUint64(1641363540),
-		TimeFoS:     uint8(85),
-		Extra:       common.Hex2Bytes("0xd983010701846b6c617988676f312e31362e338664617277696e000000000000f89ed5949712f943b296758aaae79944ec975884188d3a96b8415a0614be7fd5ea40f11ce558e02993bd55f11ae72a3cfbc861875a57483ec5ec3adda3e5845fd7ab271d670c755480f9ef5b8dd731f4e1f032fff5d165b763ac01f843b8418867d3733167a0c737fa5b62dcc59ec3b0af5748bcc894e7990a0b5a642da4546713c9127b3358cdfe7894df1ca1db5a97560599986d7f1399003cd63660b98200"),
-		Governance:  []byte{},
-		Vote:        []byte{},
+func testEthApiCall(t *testing.T, injects []mockFunc, expected interface{}, method string, params ...interface{}) {
+	t.Run(method, func(t *testing.T) {
+		result, err := mockCallEthApi(t, injects, method, params...)
+		assert.Nil(t, err)
+		assert.Equal(t, expected, result)
 	})
-	block, _, _, _, _ := createTestData(t, header)
-	var blockParam interface{}
-	switch testAPIName {
-	case "GetBlockByNumber":
-		blockParam = rpc.BlockNumber(block.NumberU64())
-		mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil)
-	case "GetBlockByHash":
-		blockParam = block.Hash()
-		mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(block, nil)
-	}
-
-	results := reflect.ValueOf(&api).MethodByName(testAPIName).Call(
-		[]reflect.Value{
-			reflect.ValueOf(context.Background()),
-			reflect.ValueOf(blockParam),
-			reflect.ValueOf(fullTxs),
-		},
-	)
-	ethBlock, ok := results[0].Interface().(map[string]interface{})
-	assert.Equal(t, true, ok)
-	assert.NotEqual(t, ethBlock, nil)
-
-	expected := make(map[string]interface{})
-	if fullTxs {
-		assert.NoError(t, json.Unmarshal([]byte(`
-    {
-      "jsonrpc": "2.0",
-      "id": 1,
-      "result": {
-        "baseFeePerGas": "0x0",
-        "difficulty": "0x1",
-        "extraData": "0x",
-        "gasLimit": "0xe8d4a50fff",
-        "gasUsed": "0x2710",
-        "hash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-        "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-        "miner": "0x9712f943b296758aaae79944ec975884188d3a96",
-        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-        "nonce": "0x0000000000000000",
-        "number": "0x4",
-        "parentHash": "0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348",
-        "receiptsRoot": "0xf6278dd71ffc1637f78dc2ee54f6f9e64d4b1633c1179dfdbc8c3b482efbdbec",
-        "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-        "size": "0xe44",
-        "stateRoot": "0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9",
-        "timestamp": "0x61d53854",
-        "totalDifficulty": "0x5",
-        "transactions": [
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x0000000000000000000000000000000000000000",
-              "gas": "0x1c9c380",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x6231f24f79d28bb5b8425ce577b3b77cd9c1ab766fcfc5233358a2b1c2f4ff70",
-              "input": "0x3078653331393765386630303030303030303030303030303030303030303030303065306265663939623461323232383665323736333062343835643036633561313437636565393331303030303030303030303030303030303030303030303030313538626566663863386364656264363436353461646435663661316439393337653733353336633030303030303030303030303030303030303030303030303030303030303030303030303030303030303030323962623565376662366265616533326366383030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030306530303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303138303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030316236306662343631346132326530303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030343030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031353862656666386338636465626436343635346164643566366131643939333765373335333663303030303030303030303030303030303030303030303030373462613033313938666564326231356135316166323432623963363366616633633866346433343030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030",
-              "nonce": "0x0",
-              "to": "0x3736346135356338333362313038373730343930",
-              "transactionIndex": "0x0",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3036656164333031646165616636376537376538",
-              "gas": "0x989680",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xf146858415c060eae65a389cbeea8aeadc79461038fbee331ffd97b41279dd63",
-              "input": "0x",
-              "nonce": "0x1",
-              "to": "0x3364613566326466626334613262333837316462",
-              "transactionIndex": "0x1",
-              "value": "0x5",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3730323366383135666136613633663761613063",
-              "gas": "0x1312d00",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x0a01fc67bb4c15c32fa43563c0fcf05cd5bf2fdcd4ec78122b5d0295993bca24",
-              "input": "0x68656c6c6f",
-              "nonce": "0x2",
-              "to": "0x3336623562313539333066323466653862616538",
-              "transactionIndex": "0x2",
-              "value": "0x3",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x1312d00",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x486f7561375c38f1627264f8676f92ec0dd1c4a7c52002ba8714e61fcc6bb649",
-              "input": "0x",
-              "nonce": "0x3",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0x3",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x5f5e100",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xbd3e57cd31dd3d6679326f7a949f0de312e9ae53bec5ef3c23b43a5319c220a4",
-              "input": "0x",
-              "nonce": "0x4",
-              "to": null,
-              "transactionIndex": "0x4",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xff666129a0c7227b17681d668ecdef5d6681fc93dbd58856eea1374880c598b0",
-              "input": "0x",
-              "nonce": "0x5",
-              "to": "0x3632323232656162393565396564323963346266",
-              "transactionIndex": "0x5",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xa8ad4f295f2acff9ef56b476b1c52ecb74fb3fd95a789d768c2edb3376dbeacf",
-              "input": "0x",
-              "nonce": "0x6",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0x6",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x47dbfd201fc1dd4188fd2003c6328a09bf49414be607867ca3a5d63573aede93",
-              "input": "0xf8ad80b8aaf8a8a0072409b14b96f9d7dbf4788dbc68c5d30bd5fac1431c299e0ab55c92e70a28a4a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000808080",
-              "nonce": "0x7",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0x7",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3036656164333031646165616636376537376538",
-              "gas": "0x989680",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x2283294e89b41df2df4dd37c375a3f51c3ad11877aa0a4b59d0f68cf5cfd865a",
-              "input": "0x",
-              "nonce": "0x8",
-              "to": "0x3364613566326466626334613262333837316462",
-              "transactionIndex": "0x8",
-              "value": "0x5",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3730323366383135666136613633663761613063",
-              "gas": "0x1312d00",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x80e05750d02d22d73926179a0611b431ae7658846406f836e903d76191423716",
-              "input": "0x68656c6c6f",
-              "nonce": "0x9",
-              "to": "0x3336623562313539333066323466653862616538",
-              "transactionIndex": "0x9",
-              "value": "0x3",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x1312d00",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xe8abdee5e8fef72fe4d98f7dbef36000407e97874e8c880df4d85646958dd2c1",
-              "input": "0x",
-              "nonce": "0xa",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0xa",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x5f5e100",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x4c970be1815e58e6f69321202ce38b2e5c5e5ecb70205634848afdbc57224811",
-              "input": "0x",
-              "nonce": "0xb",
-              "to": null,
-              "transactionIndex": "0xb",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x7ff0a809387d0a4cab77624d467f4d65ffc1ac95f4cc46c2246daab0407a7d83",
-              "input": "0x",
-              "nonce": "0xc",
-              "to": "0x3632323232656162393565396564323963346266",
-              "transactionIndex": "0xc",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xb510b11415b39d18a972a00e3b43adae1e0f583ea0481a4296e169561ff4d916",
-              "input": "0x",
-              "nonce": "0xd",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0xd",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xab466145fb71a2d24d6f6af3bddf3bcfa43c20a5937905dd01963eaf9fc5e382",
-              "input": "0xf8ad80b8aaf8a8a0072409b14b96f9d7dbf4788dbc68c5d30bd5fac1431c299e0ab55c92e70a28a4a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000808080",
-              "nonce": "0xe",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0xe",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3036656164333031646165616636376537376538",
-              "gas": "0x989680",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xec714ab0875768f482daeabf7eb7be804e3c94bc1f1b687359da506c7f3a66b2",
-              "input": "0x",
-              "nonce": "0xf",
-              "to": "0x3364613566326466626334613262333837316462",
-              "transactionIndex": "0xf",
-              "value": "0x5",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3730323366383135666136613633663761613063",
-              "gas": "0x1312d00",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x069af125fe88784e46f90ace9960a09e5d23e6ace20350062be75964a7ece8e6",
-              "input": "0x68656c6c6f",
-              "nonce": "0x10",
-              "to": "0x3336623562313539333066323466653862616538",
-              "transactionIndex": "0x10",
-              "value": "0x3",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x1312d00",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x4a6bb7b2cd68265eb6a693aa270daffa3cc297765267f92be293b12e64948c82",
-              "input": "0x",
-              "nonce": "0x11",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0x11",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x5f5e100",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0xa354fe3fdde6292e85545e6327c314827a20e0d7a1525398b38526fe28fd36e1",
-              "input": "0x",
-              "nonce": "0x12",
-              "to": null,
-              "transactionIndex": "0x12",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x5bb64e885f196f7b515e62e3b90496864d960e2f5e0d7ad88550fa1c875ca691",
-              "input": "0x",
-              "nonce": "0x13",
-              "to": "0x3632323232656162393565396564323963346266",
-              "transactionIndex": "0x13",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x6f4308b3c98db2db215d02c0df24472a215df7aa283261fcb06a6c9f796df9af",
-              "input": "0x",
-              "nonce": "0x14",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0x14",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            },
-            {
-              "blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-              "blockNumber": "0x4",
-              "from": "0x3936663364636533666637396132333733653330",
-              "gas": "0x2faf080",
-              "gasPrice": "0x5d21dba00",
-              "hash": "0x1df88d113f0c5833c1f7264687cd6ac43888c232600ffba8d3a7d89bb5013e71",
-              "input": "0xf8ad80b8aaf8a8a0072409b14b96f9d7dbf4788dbc68c5d30bd5fac1431c299e0ab55c92e70a28a4a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000808080",
-              "nonce": "0x15",
-              "to": "0x3936663364636533666637396132333733653330",
-              "transactionIndex": "0x15",
-              "value": "0x0",
-              "type": "0x0",
-              "v": "0x1",
-              "r": "0x2",
-              "s": "0x3"
-            }
-        ],
-        "transactionsRoot": "0x0a83e34ab7302f42f4a9203e8295f545517645989da6555d8cbdc1e9599df85b",
-        "uncles": []
-      }
-    }
-    `,
-		), &expected))
-	} else {
-		assert.NoError(t, json.Unmarshal([]byte(`
-    {
-      "jsonrpc": "2.0",
-      "id": 1,
-      "result": {
-        "baseFeePerGas": "0x0",
-        "difficulty": "0x1",
-        "extraData": "0x",
-        "gasLimit": "0xe8d4a50fff",
-        "gasUsed": "0x2710",
-        "hash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
-        "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-        "miner": "0x9712f943b296758aaae79944ec975884188d3a96",
-        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-        "nonce": "0x0000000000000000",
-        "number": "0x4",
-        "parentHash": "0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348",
-        "receiptsRoot": "0xf6278dd71ffc1637f78dc2ee54f6f9e64d4b1633c1179dfdbc8c3b482efbdbec",
-        "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-        "size": "0xe44",
-        "stateRoot": "0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9",
-        "timestamp": "0x61d53854",
-        "totalDifficulty": "0x5",
-        "transactions": [
-            "0x6231f24f79d28bb5b8425ce577b3b77cd9c1ab766fcfc5233358a2b1c2f4ff70",
-            "0xf146858415c060eae65a389cbeea8aeadc79461038fbee331ffd97b41279dd63",
-            "0x0a01fc67bb4c15c32fa43563c0fcf05cd5bf2fdcd4ec78122b5d0295993bca24",
-            "0x486f7561375c38f1627264f8676f92ec0dd1c4a7c52002ba8714e61fcc6bb649",
-            "0xbd3e57cd31dd3d6679326f7a949f0de312e9ae53bec5ef3c23b43a5319c220a4",
-            "0xff666129a0c7227b17681d668ecdef5d6681fc93dbd58856eea1374880c598b0",
-            "0xa8ad4f295f2acff9ef56b476b1c52ecb74fb3fd95a789d768c2edb3376dbeacf",
-            "0x47dbfd201fc1dd4188fd2003c6328a09bf49414be607867ca3a5d63573aede93",
-            "0x2283294e89b41df2df4dd37c375a3f51c3ad11877aa0a4b59d0f68cf5cfd865a",
-            "0x80e05750d02d22d73926179a0611b431ae7658846406f836e903d76191423716",
-            "0xe8abdee5e8fef72fe4d98f7dbef36000407e97874e8c880df4d85646958dd2c1",
-            "0x4c970be1815e58e6f69321202ce38b2e5c5e5ecb70205634848afdbc57224811",
-            "0x7ff0a809387d0a4cab77624d467f4d65ffc1ac95f4cc46c2246daab0407a7d83",
-            "0xb510b11415b39d18a972a00e3b43adae1e0f583ea0481a4296e169561ff4d916",
-            "0xab466145fb71a2d24d6f6af3bddf3bcfa43c20a5937905dd01963eaf9fc5e382",
-            "0xec714ab0875768f482daeabf7eb7be804e3c94bc1f1b687359da506c7f3a66b2",
-            "0x069af125fe88784e46f90ace9960a09e5d23e6ace20350062be75964a7ece8e6",
-            "0x4a6bb7b2cd68265eb6a693aa270daffa3cc297765267f92be293b12e64948c82",
-            "0xa354fe3fdde6292e85545e6327c314827a20e0d7a1525398b38526fe28fd36e1",
-            "0x5bb64e885f196f7b515e62e3b90496864d960e2f5e0d7ad88550fa1c875ca691",
-            "0x6f4308b3c98db2db215d02c0df24472a215df7aa283261fcb06a6c9f796df9af",
-            "0x1df88d113f0c5833c1f7264687cd6ac43888c232600ffba8d3a7d89bb5013e71"
-        ],
-        "transactionsRoot": "0x0a83e34ab7302f42f4a9203e8295f545517645989da6555d8cbdc1e9599df85b",
-        "uncles": []
-      }
-    }
-    `,
-		), &expected))
-	}
-	checkEthereumBlockOrHeaderFormat(t, expected, ethBlock)
 }
 
-// checkEthereumHeaderFormat checks that ethBlockOrHeader returned from
-// GetHeader or GetBlock APIs have all keys of the Ethereum data structure and
-// also checks the immutable values are well-defined or not.
-func checkEthereumBlockOrHeaderFormat(
-	t *testing.T,
-	expected map[string]interface{},
-	actual map[string]interface{},
-) {
-	marshaledActual, err := json.Marshal(actual)
-	assert.NoError(t, err)
-	actualResult := make(map[string]interface{})
-	assert.NoError(t, json.Unmarshal(marshaledActual, &actualResult))
+func testEthApiJson(t *testing.T, injects []mockFunc, expected interface{}, method string, params ...interface{}) {
+	t.Run(method, func(t *testing.T) {
+		result, err := mockCallEthApi(t, injects, method, params...)
+		assert.Nil(t, err)
 
-	expectedResult, ok := expected["result"].(map[string]interface{})
-	assert.True(t, ok)
-	marshaledExpectedResult, err := json.Marshal(expectedResult)
-	assert.NoError(t, err)
-	t.Logf("expectedResult: %s\n", marshaledExpectedResult)
-	t.Logf("actualResult: %s\n", marshaledActual)
-	// Because the order of key in map is not guaranteed in Go, comparing the maps
-	// by iterating keys is reasonable approach.
-	for key := range expectedResult {
-		assert.Equal(t, expectedResult[key], actualResult[key])
-	}
+		resultMap := stringifyResult(t, result)
+		assert.Equal(t, expected, resultMap)
+	})
 }
 
-// TestEthereumAPI_GetTransactionByBlockNumberAndIndex tests GetTransactionByBlockNumberAndIndex.
-func TestEthereumAPI_GetTransactionByBlockNumberAndIndex(t *testing.T) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-	block, txs, _, _, _ := createTestData(t, nil)
+// Test the call 'method(params..., idx)' for each txs in testTxObjectsJson
+func testEthApiForTxIndex(t *testing.T, injects []mockFunc, expectedList []interface{}, method string, params ...interface{}) {
+	assert.NotEmpty(t, expectedList)
+	t.Run(method, func(t *testing.T) {
+		for idx, expected := range expectedList {
+			paramsIdx := append(params, hexutil.Uint(idx))
 
-	// Mock Backend functions.
-	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil).Times(txs.Len())
+			result, err := mockCallEthApi(t, injects, method, paramsIdx...)
+			assert.Nil(t, err)
 
-	// Get transaction by block number and index for each transaction types.
-	for i := 0; i < txs.Len(); i++ {
-		ethTx := api.GetTransactionByBlockNumberAndIndex(context.Background(), rpc.BlockNumber(block.NumberU64()), hexutil.Uint(i))
-		checkEthRPCTransactionFormat(t, block, ethTx, txs[i], hexutil.Uint64(i))
-	}
-
-	mockCtrl.Finish()
-}
-
-// TestEthereumAPI_GetTransactionByBlockHashAndIndex tests GetTransactionByBlockHashAndIndex.
-func TestEthereumAPI_GetTransactionByBlockHashAndIndex(t *testing.T) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-	block, txs, _, _, _ := createTestData(t, nil)
-
-	// Mock Backend functions.
-	mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(block, nil).Times(txs.Len())
-
-	// Get transaction by block hash and index for each transaction types.
-	for i := 0; i < txs.Len(); i++ {
-		ethTx := api.GetTransactionByBlockHashAndIndex(context.Background(), block.Hash(), hexutil.Uint(i))
-		checkEthRPCTransactionFormat(t, block, ethTx, txs[i], hexutil.Uint64(i))
-	}
-
-	mockCtrl.Finish()
-}
-
-// TestEthereumAPI_GetTransactionByHash tests GetTransactionByHash.
-func TestEthereumAPI_GetTransactionByHash(t *testing.T) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-	block, txs, txHashMap, _, _ := createTestData(t, nil)
-
-	// Define queryFromPool for ReadTxAndLookupInfo function return tx from hash map.
-	// MockDatabaseManager will initiate data with txHashMap, block and queryFromPool.
-	// If queryFromPool is true, MockDatabaseManager will return nil to query transactions from transaction pool,
-	// otherwise return a transaction from txHashMap.
-	mockDBManager := &MockDatabaseManager{txHashMap: txHashMap, blockData: block, queryFromPool: false}
-
-	// Mock Backend functions.
-	mockBackend.EXPECT().ChainDB().Return(mockDBManager).Times(txs.Len())
-	mockBackend.EXPECT().BlockByHash(gomock.Any(), block.Hash()).Return(block, nil).Times(txs.Len())
-
-	// Get transaction by hash for each transaction types.
-	for i := 0; i < txs.Len(); i++ {
-		ethTx, err := api.GetTransactionByHash(context.Background(), txs[i].Hash())
-		if err != nil {
-			t.Fatal(err)
+			resultMap := stringifyResult(t, result)
+			assert.Equal(t, expected, resultMap)
 		}
-		checkEthRPCTransactionFormat(t, block, ethTx, txs[i], hexutil.Uint64(i))
-	}
-
-	mockCtrl.Finish()
+	})
 }
 
-// TestEthereumAPI_GetTransactionByHash tests GetTransactionByHash from transaction pool.
-func TestEthereumAPI_GetTransactionByHashFromPool(t *testing.T) {
-	mockCtrl, mockBackend, api := testInitForEthApi(t)
-	block, txs, txHashMap, _, _ := createTestData(t, nil)
+func testEthApiForTxHash(t *testing.T, injects []mockFunc, expectedList []interface{}, method string, params ...interface{}) {
+	assert.NotEmpty(t, expectedList)
+	t.Run(method, func(t *testing.T) {
+		for _, expected := range expectedList {
+			expectedMap := expected.(map[string]interface{})
+			var txhash string
+			if v, ok := expectedMap["hash"]; ok {
+				txhash = v.(string)
+			} else if v, ok := expectedMap["transactionHash"]; ok {
+				txhash = v.(string)
+			}
+			paramsHash := append(params, common.HexToHash(txhash))
 
-	// Define queryFromPool for ReadTxAndLookupInfo function return nil.
-	// MockDatabaseManager will initiate data with txHashMap, block and queryFromPool.
-	// If queryFromPool is true, MockDatabaseManager will return nil to query transactions from transaction pool,
-	// otherwise return a transaction from txHashMap.
-	mockDBManager := &MockDatabaseManager{txHashMap: txHashMap, blockData: block, queryFromPool: true}
+			result, err := mockCallEthApi(t, injects, method, paramsHash...)
+			assert.Nil(t, err)
 
-	// Mock Backend functions.
-	mockBackend.EXPECT().ChainDB().Return(mockDBManager).Times(txs.Len())
-	mockBackend.EXPECT().GetPoolTransaction(gomock.Any()).DoAndReturn(
+			resultMap := stringifyResult(t, result)
+			assert.Equal(t, expected, resultMap)
+			break
+		}
+	})
+}
+
+func stringifyResult(t *testing.T, result interface{}) map[string]interface{} {
+	resultJsonBytes, err := json.Marshal(result)
+	assert.Nil(t, err)
+	var resultMap map[string]interface{}
+	err = json.Unmarshal(resultJsonBytes, &resultMap)
+	assert.Nil(t, err)
+	return resultMap
+}
+
+// testContext is a context for testing EthereumAPI with mock backend.
+// Stuff the mock backend using mockInjectFunc.
+type testContext struct {
+	mockCtrl    *gomock.Controller
+	mockBackend *mock_api.MockBackend
+	api         *EthereumAPI
+}
+type mockFunc func(ctx *testContext)
+
+func mockCallEthApi(t *testing.T, injects []mockFunc, method string, params ...interface{}) (interface{}, error) {
+	ctx := &testContext{}
+
+	// Setup mock backend and API
+	if len(injects) == 0 {
+		ctx.api = &EthereumAPI{}
+	} else {
+		ctx.mockCtrl = gomock.NewController(t)
+		ctx.mockBackend = mock_api.NewMockBackend(ctx.mockCtrl)
+		ctx.api = &EthereumAPI{
+			publicTransactionPoolAPI: NewPublicTransactionPoolAPI(ctx.mockBackend, new(AddrLocker)),
+			publicKlayAPI:            NewPublicKlayAPI(ctx.mockBackend),
+			publicBlockChainAPI:      NewPublicBlockChainAPI(ctx.mockBackend),
+		}
+		defer ctx.mockCtrl.Finish()
+
+		for _, inject := range injects {
+			inject(ctx)
+		}
+	}
+
+	// Invoke the method from generic params
+	api := ctx.api
+	values := make([]reflect.Value, len(params))
+	for i, param := range params {
+		values[i] = reflect.ValueOf(param)
+	}
+	methodPtr := reflect.ValueOf(api).MethodByName(method)
+	results := methodPtr.Call(values)
+
+	// Assume that the method returns [] or [result] or [result, err]
+	var result interface{}
+	if len(results) > 0 {
+		result = results[0].Interface()
+	}
+	var err error
+	if len(results) > 1 && results[1].Interface() != nil {
+		err = results[1].Interface().(error)
+	}
+	return result, err
+}
+
+// Below are mockInjectFuncs for various backend features.
+
+// Stuff gov.NodeAddress()
+func mockNodeAddress(ctx *testContext) {
+	var (
+		dbm    = database.NewMemoryDBManager()
+		gov    = governance.NewMixedEngineNoInit(testLondonConfig, dbm)
+		govAPI = governance.NewGovernanceAPI(gov)
+	)
+	gov.SetNodeAddress(testNodeAddr)
+
+	ctx.api.governanceAPI = govAPI
+}
+
+// Stuff backend.BlockByNumber() and backend.BlockByHash() with valid block
+func mockBlock(ctx *testContext) {
+	mockEngine := mock_consensus.NewMockEngine(ctx.mockCtrl)
+	mockEngine.EXPECT().Author(gomock.Any()).Return(testAuthor, nil).AnyTimes()
+
+	ctx.mockBackend.EXPECT().Engine().Return(mockEngine).AnyTimes()
+	ctx.mockBackend.EXPECT().GetTd(gomock.Any()).Return(testTd).AnyTimes()
+	ctx.mockBackend.EXPECT().ChainConfig().Return(testChainConfig).AnyTimes()
+
+	ctx.mockBackend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(testHeader, nil).AnyTimes()
+	ctx.mockBackend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(testHeader, nil).AnyTimes()
+
+	ctx.mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(testBlock, nil).AnyTimes()
+	ctx.mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(testBlock, nil).AnyTimes()
+}
+
+// Stuff backend.BlockByNumber() and backend.BlockByHash() with unknown block error
+func mockNoBlock(ctx *testContext) {
+	ctx.mockBackend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, testErrUnknownHeader).AnyTimes()
+	ctx.mockBackend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(nil, testErrUnknownHeader).AnyTimes()
+
+	ctx.mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, testErrUnknownBlock).AnyTimes()
+	ctx.mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(nil, testErrUnknownBlock).AnyTimes()
+}
+
+// Stuff txpool.ChainDB().ReadTxAndLookupInfo()
+func mockChainDBTx(ctx *testContext) {
+	txs := make(map[common.Hash]*types.Transaction)
+	for _, tx := range testBlock.Transactions() {
+		txs[tx.Hash()] = tx
+	}
+
+	mockDBManager := &mockChainDB{txs: txs, block: testBlock}
+	ctx.mockBackend.EXPECT().ChainDB().Return(mockDBManager).AnyTimes()
+}
+
+// Stuff backend.ChainDB().ReadTxAndLookupInfo() with no data
+func mockChainDBNoTx(ctx *testContext) {
+	txs := make(map[common.Hash]*types.Transaction)
+	mockDBManager := &mockChainDB{txs: txs, block: testBlock}
+	ctx.mockBackend.EXPECT().ChainDB().Return(mockDBManager).AnyTimes()
+}
+
+// Stuff backend.GetPoolTransaction()
+func mockPoolTx(ctx *testContext) {
+	txs := make(map[common.Hash]*types.Transaction)
+	for _, tx := range testBlock.Transactions() {
+		txs[tx.Hash()] = tx
+	}
+
+	ctx.mockBackend.EXPECT().GetPoolTransaction(gomock.Any()).DoAndReturn(
 		func(hash common.Hash) *types.Transaction {
-			return txHashMap[hash]
-		},
-	).Times(txs.Len())
+			return txs[hash]
+		}).AnyTimes()
+}
 
-	//  Get transaction by hash from the transaction pool for each transaction types.
-	for i := 0; i < txs.Len(); i++ {
-		ethTx, err := api.GetTransactionByHash(context.Background(), txs[i].Hash())
-		if err != nil {
-			t.Fatal(err)
-		}
-		checkEthRPCTransactionFormat(t, nil, ethTx, txs[i], 0)
+// Stuff backend.GetTxLookupInfoAndReceipt(), backend.GetBlockReceipts()
+func mockReceipt(ctx *testContext) {
+	txs := make(map[common.Hash]*types.Transaction)
+	receiptList := make([]*types.Receipt, 0)
+	receiptMap := make(map[common.Hash]*types.Receipt)
+	for _, tx := range testBlock.Transactions() {
+		txs[tx.Hash()] = tx
+		receipt := types.NewReceipt(0, tx.Hash(), tx.Gas())
+		receiptList = append(receiptList, receipt)
+		receiptMap[tx.Hash()] = receipt
 	}
 
-	mockCtrl.Finish()
+	ctx.mockBackend.EXPECT().GetTxLookupInfoAndReceipt(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64, *types.Receipt) {
+			return txs[hash], testBlock.Hash(), testBlock.NumberU64(), txs[hash].Nonce(), receiptMap[hash]
+		}).AnyTimes()
+	ctx.mockBackend.EXPECT().GetBlockReceipts(gomock.Any(), gomock.Any()).Return(receiptList).AnyTimes()
 }
+
+// mockChainDB is a mock of database.DBManager for overriding the backend.ChainDB().ReadTxAndLookupInfo().
+type mockChainDB struct {
+	database.DBManager
+
+	txs   map[common.Hash]*types.Transaction
+	block *types.Block
+}
+
+func (m *mockChainDB) ReadTxAndLookupInfo(hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64) {
+	tx := m.txs[hash]
+	if tx == nil {
+		return nil, common.Hash{}, 0, 0
+	} else {
+		return tx, m.block.Hash(), m.block.NumberU64(), tx.Nonce()
+	}
+}
+
+func fillTestData(t *testing.T, config *params.ChainConfig) {
+	rules := config.Rules(big.NewInt(4))
+
+	testChainConfig = config
+	testNodeAddr = common.HexToAddress("0x9712f943b296758aaae79944ec975884188d3a96")
+	testAuthor = common.HexToAddress("0x2eaad2bf70a070aaa2e007beee99c6148f47718e")
+	testTd = big.NewInt(5)
+
+	testHeader, testHeaderMap = createTestHeader(rules)
+	assert.Equal(t, testHeader.Hash().Hex(), testHeaderMap["hash"])
+
+	testBlock, testBlockMapHash, testBlockMapFull = createTestBlock(t, rules, testHeader, testHeaderMap)
+
+	testTxObjects = testBlockMapFull["transactions"].([]interface{})
+	testTxObjectsPending = make([]interface{}, 0)
+	for _, elem := range testTxObjects {
+		txObj := cloneJsonMap(elem.(map[string]interface{}))
+		txObj["blockNumber"] = nil
+		txObj["blockHash"] = nil
+		txObj["transactionIndex"] = nil
+		testTxObjectsPending = append(testTxObjectsPending, txObj)
+	}
+	testReceipts = make([]interface{}, 0)
+	for _, elem := range testTxObjects {
+		receipt := cloneJsonMap(elem.(map[string]interface{}))
+		receipt["status"] = "0x0"
+		receipt["logsBloom"] = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+		receipt["logs"] = make([]interface{}, 0)
+		receipt["gasUsed"] = receipt["gas"]
+		receipt["effectiveGasPrice"] = "0x5d21dba00"
+		receipt["transactionHash"] = receipt["hash"]
+
+		delete(receipt, "hash")
+		testReceipts = append(testReceipts, receipt)
+		fmt.Println("copying", receipt)
+		break
+	}
+
+	testErrUnknownBlock = fmt.Errorf("the block does not exist (block number: %d)", 4)
+	testErrUnknownHeader = fmt.Errorf("the header does not exist (block number: %d)", 4)
+}
+
+func cloneJsonMap(src map[string]interface{}) map[string]interface{} {
+	dst := make(map[string]interface{})
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func createTestHeader(rules params.Rules) (*types.Header, map[string]interface{}) {
+	header := &types.Header{
+		ParentHash:  common.HexToHash("0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348"),
+		Rewardbase:  common.HexToAddress("0x9712f943b296758aaae79944ec975884188d3a96"),
+		TxHash:      common.HexToHash("0x0a83e34ab7302f42f4a9203e8295f545517645989da6555d8cbdc1e9599df85b"),
+		Root:        common.HexToHash("0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9"),
+		ReceiptHash: common.HexToHash("0xf6278dd71ffc1637f78dc2ee54f6f9e64d4b1633c1179dfdbc8c3b482efbdbec"),
+		Bloom:       types.BytesToBloom(hexutil.MustDecode("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+		BlockScore:  big.NewInt(1),
+		Number:      big.NewInt(4),
+		GasUsed:     21000,
+		Time:        big.NewInt(1641363540),
+		TimeFoS:     85,
+		Extra:       common.Hex2Bytes("0xd983010701846b6c617988676f312e31362e338664617277696e000000000000f89ed5949712f943b296758aaae79944ec975884188d3a96b8415a0614be7fd5ea40f11ce558e02993bd55f11ae72a3cfbc861875a57483ec5ec3adda3e5845fd7ab271d670c755480f9ef5b8dd731f4e1f032fff5d165b763ac01f843b8418867d3733167a0c737fa5b62dcc59ec3b0af5748bcc894e7990a0b5a642da4546713c9127b3358cdfe7894df1ca1db5a97560599986d7f1399003cd63660b98200"),
+		Governance:  hexutil.MustDecode("0x9b7b227265776172642e726174696f223a2235302f32302f3330227d"),
+		Vote:        hexutil.MustDecode("0xf09499fb17d324fa0e07f23b49d09028ac0919414db694676f7665726e616e63652e756e6974707269636585ae9f7bcc00"),
+	}
+	headerMap := map[string]interface{}{
+		"difficulty":       "0x1",
+		"extraData":        "0x",           // Dropped in eth_ namespace
+		"gasLimit":         "0xe8d4a50fff", // UpperGasLimit
+		"gasUsed":          "0x5208",
+		"hash":             "0x9b9e7a3706eee41e1aa16357916633c8a3523fdf0daaae44380c4a07a22e6e9b",
+		"logsBloom":        "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+		"miner":            "0x2eaad2bf70a070aaa2e007beee99c6148f47718e",
+		"mixHash":          "0x0000000000000000000000000000000000000000000000000000000000000000",
+		"nonce":            "0x0000000000000000", // BlockNonce is fixed 8 byte
+		"number":           "0x4",
+		"parentHash":       "0xc8036293065bacdfce87debec0094a71dbbe40345b078d21dcc47adb4513f348",
+		"receiptsRoot":     "0xf6278dd71ffc1637f78dc2ee54f6f9e64d4b1633c1179dfdbc8c3b482efbdbec",
+		"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+		"size":             "0x291",
+		"stateRoot":        "0xad31c32942fa033166e4ef588ab973dbe26657c594de4ba98192108becf0fec9",
+		"timestamp":        "0x61d53854",
+		"totalDifficulty":  "0x5",
+		"transactionsRoot": "0x0a83e34ab7302f42f4a9203e8295f545517645989da6555d8cbdc1e9599df85b",
+	}
+
+	// Add optional fields according to the hardfork status
+	if rules.IsEthTxType {
+		headerMap["baseFeePerGas"] = "0x0" // Before Magma, return dummy value even if header.BaseFee == nil
+	}
+	if rules.IsMagma {
+		header.BaseFee = big.NewInt(25000000000)
+		headerMap["hash"] = "0x55a95dfb0da4233c0db6df7f411719cc1c94e95db21139028d0da81e4a961768"
+		headerMap["baseFeePerGas"] = "0x5d21dba00"
+		headerMap["size"] = "0x295"
+	}
+	if rules.IsRandao {
+		header.RandomReveal = hexutil.MustDecode("0x94516a8bc695b5bf43aa077cd682d9475a3a6bed39a633395b78ed8f276e7c5bb00bb26a77825013c6718579f1b3ee2275b158801705ea77989e3acc849ee9c524bd1822bde3cba7be2aae04347f0d91508b7b7ce2f11ec36cbf763173421ae7")
+		header.MixHash = hexutil.MustDecode("0xdf117d1245dceaae0a47f05371b23cd0d0db963ff9d5c8ba768dc989f4c31883")
+		headerMap["hash"] = "0x39921290e5a25bfb5007cd0ad84e02ebad2e76f4ab139cadc5e31ff07120906e"
+		//headerMap["mixHash"] = "0xdf117d1245dceaae0a47f05371b23cd0d0db963ff9d5c8ba768dc989f4c31883" // TODO: fix
+		headerMap["mixHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
+		headerMap["size"] = "0x315"
+	}
+	return header, headerMap
+}
+
+func createTestBlock(t *testing.T, rules params.Rules, header *types.Header, headerMap map[string]interface{},
+) (*types.Block, map[string]interface{}, map[string]interface{}) {
+	block, _, _, _, _ := createTestData(t, header)
+	blockMap := cloneJsonMap(headerMap)
+
+	// Adjust uncles field
+	blockMap["uncles"] = []interface{}{}
+
+	// Adjust size field
+	blockMap["size"] = "0xe91"
+	if rules.IsMagma {
+		blockMap["size"] = "0xe97"
+	}
+	if rules.IsRandao {
+		blockMap["size"] = "0xf1a"
+	}
+
+	// Add transactions field
+	var txhashList []interface{}
+	assert.Nil(t, json.Unmarshal([]byte(testTxHashesJson), &txhashList))
+	blockMapHash := cloneJsonMap(blockMap)
+	blockMapHash["transactions"] = txhashList
+
+	var txObjectList []interface{}
+	assert.Nil(t, json.Unmarshal([]byte(testTxObjectsJson), &txObjectList))
+	for i := range txObjectList {
+		txObjectList[i].(map[string]interface{})["blockHash"] = blockMap["hash"]
+	}
+	blockMapFull := cloneJsonMap(blockMap)
+	blockMapFull["transactions"] = txObjectList
+
+	return block, blockMapHash, blockMapFull
+}
+
+var testTxHashesJson = `[
+	"0x6231f24f79d28bb5b8425ce577b3b77cd9c1ab766fcfc5233358a2b1c2f4ff70",
+	"0xf146858415c060eae65a389cbeea8aeadc79461038fbee331ffd97b41279dd63",
+	"0x0a01fc67bb4c15c32fa43563c0fcf05cd5bf2fdcd4ec78122b5d0295993bca24",
+	"0x486f7561375c38f1627264f8676f92ec0dd1c4a7c52002ba8714e61fcc6bb649",
+	"0xbd3e57cd31dd3d6679326f7a949f0de312e9ae53bec5ef3c23b43a5319c220a4",
+	"0xff666129a0c7227b17681d668ecdef5d6681fc93dbd58856eea1374880c598b0",
+	"0xa8ad4f295f2acff9ef56b476b1c52ecb74fb3fd95a789d768c2edb3376dbeacf",
+	"0x47dbfd201fc1dd4188fd2003c6328a09bf49414be607867ca3a5d63573aede93",
+	"0x2283294e89b41df2df4dd37c375a3f51c3ad11877aa0a4b59d0f68cf5cfd865a",
+	"0x80e05750d02d22d73926179a0611b431ae7658846406f836e903d76191423716",
+	"0xe8abdee5e8fef72fe4d98f7dbef36000407e97874e8c880df4d85646958dd2c1",
+	"0x4c970be1815e58e6f69321202ce38b2e5c5e5ecb70205634848afdbc57224811",
+	"0x7ff0a809387d0a4cab77624d467f4d65ffc1ac95f4cc46c2246daab0407a7d83",
+	"0xb510b11415b39d18a972a00e3b43adae1e0f583ea0481a4296e169561ff4d916",
+	"0xab466145fb71a2d24d6f6af3bddf3bcfa43c20a5937905dd01963eaf9fc5e382",
+	"0xec714ab0875768f482daeabf7eb7be804e3c94bc1f1b687359da506c7f3a66b2",
+	"0x069af125fe88784e46f90ace9960a09e5d23e6ace20350062be75964a7ece8e6",
+	"0x4a6bb7b2cd68265eb6a693aa270daffa3cc297765267f92be293b12e64948c82",
+	"0xa354fe3fdde6292e85545e6327c314827a20e0d7a1525398b38526fe28fd36e1",
+	"0x5bb64e885f196f7b515e62e3b90496864d960e2f5e0d7ad88550fa1c875ca691",
+	"0x6f4308b3c98db2db215d02c0df24472a215df7aa283261fcb06a6c9f796df9af",
+	"0x1df88d113f0c5833c1f7264687cd6ac43888c232600ffba8d3a7d89bb5013e71"
+]`
+
+// TODO: Add TxTypeEthereumAccessList and TxTypeEthereumDynamicFee
+var testTxObjectsJson = `[
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x0000000000000000000000000000000000000000",
+		"gas": "0x1c9c380",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x6231f24f79d28bb5b8425ce577b3b77cd9c1ab766fcfc5233358a2b1c2f4ff70",
+		"input": "0x3078653331393765386630303030303030303030303030303030303030303030303065306265663939623461323232383665323736333062343835643036633561313437636565393331303030303030303030303030303030303030303030303030313538626566663863386364656264363436353461646435663661316439393337653733353336633030303030303030303030303030303030303030303030303030303030303030303030303030303030303030323962623565376662366265616533326366383030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030306530303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303138303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030316236306662343631346132326530303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030343030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031353862656666386338636465626436343635346164643566366131643939333765373335333663303030303030303030303030303030303030303030303030373462613033313938666564326231356135316166323432623963363366616633633866346433343030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030",
+		"nonce": "0x0",
+		"to": "0x3736346135356338333362313038373730343930",
+		"transactionIndex": "0x0",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3036656164333031646165616636376537376538",
+		"gas": "0x989680",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xf146858415c060eae65a389cbeea8aeadc79461038fbee331ffd97b41279dd63",
+		"input": "0x",
+		"nonce": "0x1",
+		"to": "0x3364613566326466626334613262333837316462",
+		"transactionIndex": "0x1",
+		"value": "0x5",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3730323366383135666136613633663761613063",
+		"gas": "0x1312d00",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x0a01fc67bb4c15c32fa43563c0fcf05cd5bf2fdcd4ec78122b5d0295993bca24",
+		"input": "0x68656c6c6f",
+		"nonce": "0x2",
+		"to": "0x3336623562313539333066323466653862616538",
+		"transactionIndex": "0x2",
+		"value": "0x3",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x1312d00",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x486f7561375c38f1627264f8676f92ec0dd1c4a7c52002ba8714e61fcc6bb649",
+		"input": "0x",
+		"nonce": "0x3",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0x3",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x5f5e100",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xbd3e57cd31dd3d6679326f7a949f0de312e9ae53bec5ef3c23b43a5319c220a4",
+		"input": "0x",
+		"nonce": "0x4",
+		"to": null,
+		"transactionIndex": "0x4",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xff666129a0c7227b17681d668ecdef5d6681fc93dbd58856eea1374880c598b0",
+		"input": "0x",
+		"nonce": "0x5",
+		"to": "0x3632323232656162393565396564323963346266",
+		"transactionIndex": "0x5",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xa8ad4f295f2acff9ef56b476b1c52ecb74fb3fd95a789d768c2edb3376dbeacf",
+		"input": "0x",
+		"nonce": "0x6",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0x6",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x47dbfd201fc1dd4188fd2003c6328a09bf49414be607867ca3a5d63573aede93",
+		"input": "0xf8ad80b8aaf8a8a0072409b14b96f9d7dbf4788dbc68c5d30bd5fac1431c299e0ab55c92e70a28a4a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000808080",
+		"nonce": "0x7",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0x7",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3036656164333031646165616636376537376538",
+		"gas": "0x989680",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x2283294e89b41df2df4dd37c375a3f51c3ad11877aa0a4b59d0f68cf5cfd865a",
+		"input": "0x",
+		"nonce": "0x8",
+		"to": "0x3364613566326466626334613262333837316462",
+		"transactionIndex": "0x8",
+		"value": "0x5",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3730323366383135666136613633663761613063",
+		"gas": "0x1312d00",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x80e05750d02d22d73926179a0611b431ae7658846406f836e903d76191423716",
+		"input": "0x68656c6c6f",
+		"nonce": "0x9",
+		"to": "0x3336623562313539333066323466653862616538",
+		"transactionIndex": "0x9",
+		"value": "0x3",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x1312d00",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xe8abdee5e8fef72fe4d98f7dbef36000407e97874e8c880df4d85646958dd2c1",
+		"input": "0x",
+		"nonce": "0xa",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0xa",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x5f5e100",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x4c970be1815e58e6f69321202ce38b2e5c5e5ecb70205634848afdbc57224811",
+		"input": "0x",
+		"nonce": "0xb",
+		"to": null,
+		"transactionIndex": "0xb",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x7ff0a809387d0a4cab77624d467f4d65ffc1ac95f4cc46c2246daab0407a7d83",
+		"input": "0x",
+		"nonce": "0xc",
+		"to": "0x3632323232656162393565396564323963346266",
+		"transactionIndex": "0xc",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xb510b11415b39d18a972a00e3b43adae1e0f583ea0481a4296e169561ff4d916",
+		"input": "0x",
+		"nonce": "0xd",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0xd",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xab466145fb71a2d24d6f6af3bddf3bcfa43c20a5937905dd01963eaf9fc5e382",
+		"input": "0xf8ad80b8aaf8a8a0072409b14b96f9d7dbf4788dbc68c5d30bd5fac1431c299e0ab55c92e70a28a4a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000808080",
+		"nonce": "0xe",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0xe",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3036656164333031646165616636376537376538",
+		"gas": "0x989680",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xec714ab0875768f482daeabf7eb7be804e3c94bc1f1b687359da506c7f3a66b2",
+		"input": "0x",
+		"nonce": "0xf",
+		"to": "0x3364613566326466626334613262333837316462",
+		"transactionIndex": "0xf",
+		"value": "0x5",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3730323366383135666136613633663761613063",
+		"gas": "0x1312d00",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x069af125fe88784e46f90ace9960a09e5d23e6ace20350062be75964a7ece8e6",
+		"input": "0x68656c6c6f",
+		"nonce": "0x10",
+		"to": "0x3336623562313539333066323466653862616538",
+		"transactionIndex": "0x10",
+		"value": "0x3",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x1312d00",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x4a6bb7b2cd68265eb6a693aa270daffa3cc297765267f92be293b12e64948c82",
+		"input": "0x",
+		"nonce": "0x11",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0x11",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x5f5e100",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0xa354fe3fdde6292e85545e6327c314827a20e0d7a1525398b38526fe28fd36e1",
+		"input": "0x",
+		"nonce": "0x12",
+		"to": null,
+		"transactionIndex": "0x12",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x5bb64e885f196f7b515e62e3b90496864d960e2f5e0d7ad88550fa1c875ca691",
+		"input": "0x",
+		"nonce": "0x13",
+		"to": "0x3632323232656162393565396564323963346266",
+		"transactionIndex": "0x13",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x6f4308b3c98db2db215d02c0df24472a215df7aa283261fcb06a6c9f796df9af",
+		"input": "0x",
+		"nonce": "0x14",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0x14",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	},
+	{
+		"blockHash": "0xc74d8c04d4d2f2e4ed9cd1731387248367cea7f149731b7a015371b220ffa0fb",
+		"blockNumber": "0x4",
+		"from": "0x3936663364636533666637396132333733653330",
+		"gas": "0x2faf080",
+		"gasPrice": "0x5d21dba00",
+		"hash": "0x1df88d113f0c5833c1f7264687cd6ac43888c232600ffba8d3a7d89bb5013e71",
+		"input": "0xf8ad80b8aaf8a8a0072409b14b96f9d7dbf4788dbc68c5d30bd5fac1431c299e0ab55c92e70a28a4a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a00000000000000000000000000000000000000000000000000000000000000000808080",
+		"nonce": "0x15",
+		"to": "0x3936663364636533666637396132333733653330",
+		"transactionIndex": "0x15",
+		"value": "0x0",
+		"type": "0x0",
+		"v": "0x1",
+		"r": "0x2",
+		"s": "0x3"
+	}
+]`
 
 // TestEthereumAPI_PendingTransactionstests PendingTransactions.
-func TestEthereumAPI_PendingTransactions(t *testing.T) {
+func testEthereumAPI_PendingTransactions(t *testing.T) {
 	mockCtrl, mockBackend, api := testInitForEthApi(t)
 	_, txs, txHashMap, _, _ := createTestData(t, nil)
 
@@ -1169,6 +1181,7 @@ func checkEthTransactionReceiptFormat(t *testing.T, block *types.Block, receipts
 	}
 }
 
+// TODO: Add TxTypeEthereumAccessList and TxTypeEthereumDynamicFee
 func createTestData(t *testing.T, header *types.Header) (*types.Block, types.Transactions, map[common.Hash]*types.Transaction, map[common.Hash]*types.Receipt, []*types.Receipt) {
 	var txs types.Transactions
 
