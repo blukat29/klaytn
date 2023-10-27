@@ -190,23 +190,6 @@ func (sb *backend) verifyHeader(chain consensus.ChainReader, header *types.Heade
 		return errUnknownBlock
 	}
 
-	// Header verify before/after magma fork
-	if chain.Config().IsMagmaForkEnabled(header.Number) {
-		// the kip71Config used when creating the block number is a previous block config.
-		blockNum := header.Number.Uint64()
-		pset, err := sb.governance.EffectiveParams(blockNum)
-		if err != nil {
-			return err
-		}
-
-		kip71 := pset.ToKIP71Config()
-		if err := misc.VerifyMagmaHeader(parents[len(parents)-1], header, kip71); err != nil {
-			return err
-		}
-	} else if header.BaseFee != nil {
-		return consensus.ErrInvalidBaseFee
-	}
-
 	// Don't waste time checking blocks from the future
 	if header.Time.Cmp(big.NewInt(now().Add(allowedFutureBlockTime).Unix())) > 0 {
 		return consensus.ErrFutureBlock
@@ -220,7 +203,6 @@ func (sb *backend) verifyHeader(chain consensus.ChainReader, header *types.Heade
 	if header.BlockScore == nil || header.BlockScore.Cmp(defaultBlockScore) != 0 {
 		return errInvalidBlockScore
 	}
-
 	return sb.verifyCascadingFields(chain, header, parents)
 }
 
@@ -262,6 +244,37 @@ func (sb *backend) verifyCascadingFields(chain consensus.ChainReader, header *ty
 			return err
 		}
 	}
+
+	rules := chain.Config().Rules(header.Number)
+	if rules.IsMagma && header.BaseFee == nil {
+		logger.Error("Missing Magma fields after fork", "blockNum", header.Number.Uint64())
+		return errors.New("missing Magma fields")
+	}
+	if !rules.IsMagma && header.BaseFee != nil {
+		logger.Error("Unexpected Magma fields before fork", "blockNum", header.Number.Uint64())
+		return errors.New("unexpected Magma fields")
+	}
+	if rules.IsMagma {
+		kip71 := pset.ToKIP71Config()
+		if err := misc.VerifyMagmaHeader(parents[len(parents)-1], header, kip71); err != nil {
+			return err
+		}
+	}
+
+	if rules.IsRandao && (header.RandomReveal == nil || header.MixHash == nil) {
+		logger.Error("Missing Randao fields after fork", "blockNum", header.Number.Uint64())
+		return errors.New("missing Randao fields")
+	}
+	if !rules.IsRandao && (header.RandomReveal != nil || header.MixHash != nil) {
+		logger.Error("Unexpected Randao fields before", "blockNum", header.Number.Uint64())
+		return errors.New("unexpected Randao fields")
+	}
+	if rules.IsRandao {
+		if err := sb.VerifyRandao(header.Number, header.RandomReveal, header.MixHash); err != nil {
+			return err
+		}
+	}
+
 	return sb.verifyCommittedSeals(chain, header, parents)
 }
 
@@ -426,6 +439,22 @@ func (sb *backend) Prepare(chain consensus.ChainReader, header *types.Header) er
 		logger.Info("Put voteData", "num", number, "data", hex.EncodeToString(header.Vote))
 	}
 
+	if chain.Config().IsRandaoForkBlockParent(header.Number) {
+		var prevMixHash []byte
+		if chain.Config().IsRandaoForkBlockParent(parent.Number) {
+			prevMixHash = make([]byte, 32) // TODO: add var ZeroMixHash
+		} else {
+			prevMixHash = parent.MixHash
+		}
+
+		randomReveal, mixHash, err := sb.CalcRandao(header.Number, prevMixHash)
+		if err != nil {
+			return err
+		}
+		header.RandomReveal = randomReveal
+		header.MixHash = mixHash
+	}
+
 	// add validators (council list) in snapshot to extraData's validators section
 	extra, err := prepareExtra(header, snap.validators())
 	if err != nil {
@@ -452,20 +481,19 @@ func (sb *backend) Prepare(chain consensus.ChainReader, header *types.Header) er
 func (sb *backend) Finalize(chain consensus.ChainReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
 	receipts []*types.Receipt,
 ) (*types.Block, error) {
+	rules := chain.Config().Rules(header.Number)
+
 	// We can assure that if the magma hard forked block should have the field of base fee
-	if chain.Config().IsMagmaForkEnabled(header.Number) {
-		if header.BaseFee == nil {
-			logger.Error("Magma hard forked block should have baseFee", "blockNum", header.Number.Uint64())
-			return nil, errors.New("Invalid Magma block without baseFee")
-		}
-	} else if header.BaseFee != nil {
+	if rules.IsMagma && header.BaseFee == nil {
+		logger.Error("Magma hard forked block should have baseFee", "blockNum", header.Number.Uint64())
+		return nil, errors.New("Invalid Magma block without baseFee")
+	}
+	if !rules.IsMagma && header.BaseFee != nil {
 		logger.Error("A block before Magma hardfork shouldn't have baseFee", "blockNum", header.Number.Uint64())
 		return nil, consensus.ErrInvalidBaseFee
 	}
 
 	var rewardSpec *reward.RewardSpec
-
-	rules := chain.Config().Rules(header.Number)
 	pset, err := sb.governance.EffectiveParams(header.Number.Uint64())
 	if err != nil {
 		return nil, err
