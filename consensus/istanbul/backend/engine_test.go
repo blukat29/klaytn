@@ -23,6 +23,7 @@ package backend
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 	"reflect"
 	"sort"
@@ -46,6 +47,7 @@ import (
 )
 
 // These variables are the global variables of the test blockchain.
+// TODO: replace with testContext
 var (
 	nodeKeys []*ecdsa.PrivateKey
 	addrs    []common.Address
@@ -108,6 +110,7 @@ func excludeNodeByAddr(target common.Address) {
 	}
 }
 
+// TODO: replace with testContext
 // in this test, we can set n to 1, and it means we can process Istanbul and commit a
 // block by one node. Otherwise, if n is larger than 1, we have to generate
 // other fake events to process Istanbul.
@@ -270,134 +273,110 @@ func makeBlockWithoutSeal(chain *blockchain.BlockChain, engine *backend, parent 
 }
 
 func TestPrepare(t *testing.T) {
-	chain, engine := newBlockChain(1)
-	defer engine.Stop()
+	ctx := newTestContext(1, nil, nil)
+	chain, engine := ctx.chain, ctx.engine
+	defer ctx.Cleanup()
 
-	header := makeHeader(chain.Genesis(), engine.config)
-	err := engine.Prepare(chain, header)
-	if err != nil {
-		t.Errorf("error mismatch: have %v, want nil", err)
-	}
+	header := ctx.MakeHeader(chain.Genesis())
+	assert.Nil(t, engine.Prepare(chain, header))
 
 	header.ParentHash = common.HexToHash("0x1234567890")
-	err = engine.Prepare(chain, header)
-	if err != consensus.ErrUnknownAncestor {
-		t.Errorf("error mismatch: have %v, want %v", err, consensus.ErrUnknownAncestor)
-	}
+	assert.ErrorIs(t, engine.Prepare(chain, header), consensus.ErrUnknownAncestor)
 }
 
+// Test that Seal obeys the stop channel.
 func TestSealStopChannel(t *testing.T) {
-	chain, engine := newBlockChain(4)
-	defer engine.Stop()
+	ctx := newTestContext(4, nil, nil)
+	chain, engine := ctx.chain, ctx.engine
+	defer ctx.Cleanup()
 
-	block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
 	stop := make(chan struct{}, 1)
 	eventSub := engine.EventMux().Subscribe(istanbul.RequestEvent{})
-	eventLoop := func() {
-		select {
-		case ev := <-eventSub.Chan():
-			_, ok := ev.Data.(istanbul.RequestEvent)
-			if !ok {
-				t.Errorf("unexpected event comes: %v", reflect.TypeOf(ev.Data))
-			}
-			stop <- struct{}{}
-		}
+	eventLoop := func() { // Loop runs exactly once
+		ev := <-eventSub.Chan()
+		assert.IsType(t, istanbul.RequestEvent{}, ev.Data)
+
+		stop <- struct{}{}
 		eventSub.Unsubscribe()
 	}
 	go eventLoop()
 
+	block := ctx.MakeBlock(chain.Genesis())
 	finalBlock, err := engine.Seal(chain, block, stop)
-	if err != nil {
-		t.Errorf("error mismatch: have %v, want nil", err)
-	}
-
-	if finalBlock != nil {
-		t.Errorf("block mismatch: have %v, want nil", finalBlock)
-	}
+	assert.Nil(t, err)
+	assert.Nil(t, finalBlock)
 }
 
+// Test that many moving parts in Seal can produce final output
 func TestSealCommitted(t *testing.T) {
-	chain, engine := newBlockChain(1)
-	defer engine.Stop()
+	ctx := newTestContext(1, nil, nil)
+	chain, engine := ctx.chain, ctx.engine
+	defer ctx.Cleanup()
 
-	block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
-	expectedBlock, _ := engine.updateBlock(block)
-
-	actualBlock, err := engine.Seal(chain, block, make(chan struct{}))
-	if err != nil {
-		t.Errorf("error mismatch: have %v, want %v", err, expectedBlock)
-	}
-
-	if actualBlock.Hash() != expectedBlock.Hash() {
-		t.Errorf("hash mismatch: have %v, want %v", actualBlock.Hash(), expectedBlock.Hash())
-	}
+	block := ctx.MakeBlock(chain.Genesis())
+	expected, _ := engine.updateBlock(block)
+	actual, err := engine.Seal(chain, block, make(chan struct{}))
+	assert.Nil(t, err)
+	assert.Equal(t, expected.Hash(), actual.Hash())
 }
 
 func TestVerifyHeader(t *testing.T) {
-	var configItems []interface{}
-	configItems = append(configItems, istanbulCompatibleBlock(new(big.Int).SetUint64(0)))
-	configItems = append(configItems, LondonCompatibleBlock(new(big.Int).SetUint64(0)))
-	configItems = append(configItems, EthTxTypeCompatibleBlock(new(big.Int).SetUint64(0)))
-	configItems = append(configItems, magmaCompatibleBlock(new(big.Int).SetUint64(0)))
-	configItems = append(configItems, koreCompatibleBlock(new(big.Int).SetUint64(0)))
-	chain, engine := newBlockChain(1, configItems...)
-	defer engine.Stop()
+	ctx := newTestContext(1, testKoreConfig, nil)
+	chain, engine := ctx.chain, ctx.engine
+	defer ctx.Cleanup()
 
-	// errEmptyCommittedSeals case
-	block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
-	block, _ = engine.updateBlock(block)
-	err := engine.VerifyHeader(chain, block.Header(), false)
-	if err != errEmptyCommittedSeals {
-		t.Errorf("error mismatch: have %v, want %v", err, errEmptyCommittedSeals)
+	check := func(header *types.Header, expected error) {
+		err := engine.VerifyHeader(chain, header, false)
+		assert.True(t, errors.Is(err, expected) || strings.Contains(err.Error(), expected.Error()),
+			err.Error())
 	}
 
-	// short extra data
+	// Invalid ExtraData - no proposer seal
+	block := ctx.MakeBlock(chain.Genesis())
+	check(block.Header(), errors.New("invalid signature length"))
+
+	// Invalid ExtraData - no committed seals
+	block = ctx.MakeBlock(chain.Genesis())
+	block, _ = engine.updateBlock(block)
+	check(block.Header(), errEmptyCommittedSeals)
+
+	// Invalid ExtraData - short
 	header := block.Header()
 	header.Extra = []byte{}
-	err = engine.VerifyHeader(chain, header, false)
-	if err != errInvalidExtraDataFormat {
-		t.Errorf("error mismatch: have %v, want %v", err, errInvalidExtraDataFormat)
-	}
-	// incorrect extra format
-	header.Extra = []byte("0000000000000000000000000000000012300000000000000000000000000000000000000000000000000000000000000000")
-	err = engine.VerifyHeader(chain, header, false)
-	if err != errInvalidExtraDataFormat {
-		t.Errorf("error mismatch: have %v, want %v", err, errInvalidExtraDataFormat)
-	}
+	check(header, errInvalidExtraDataFormat)
 
-	// invalid difficulty
-	block = makeBlockWithoutSeal(chain, engine, chain.Genesis())
+	// Invalid ExtraData - malformed
+	header = block.Header()
+	header.Extra = []byte("0000000000000000000000000000000012300000000000000000000000000000000000000000000000000000000000000000")
+	check(header, errInvalidExtraDataFormat)
+
+	// Invalid BlockScore
 	header = block.Header()
 	header.BlockScore = big.NewInt(2)
-	err = engine.VerifyHeader(chain, header, false)
-	if err != errInvalidBlockScore {
-		t.Errorf("error mismatch: have %v, want %v", err, errInvalidBlockScore)
-	}
+	check(header, errInvalidBlockScore)
 
-	// invalid timestamp
-	block = makeBlockWithoutSeal(chain, engine, chain.Genesis())
+	// Invalid Timestamp
 	header = block.Header()
 	header.Time = new(big.Int).Add(chain.Genesis().Time(), new(big.Int).SetUint64(engine.config.BlockPeriod-1))
-	err = engine.VerifyHeader(chain, header, false)
-	if err != errInvalidTimestamp {
-		t.Errorf("error mismatch: have %v, want %v", err, errInvalidTimestamp)
-	}
+	check(header, errInvalidTimestamp)
 
-	// future block
-	block = makeBlockWithoutSeal(chain, engine, chain.Genesis())
+	// Future block
 	header = block.Header()
 	header.Time = new(big.Int).Add(big.NewInt(now().Unix()), new(big.Int).SetUint64(10))
-	err = engine.VerifyHeader(chain, header, false)
-	if err != consensus.ErrFutureBlock {
-		t.Errorf("error mismatch: have %v, want %v", err, consensus.ErrFutureBlock)
-	}
+	check(header, consensus.ErrFutureBlock)
 
 	// TODO-Klaytn: add more tests for header.Governance, header.Rewardbase, header.Vote
+
+	// Invalid BaseFee
+	header = block.Header()
+	header.BaseFee = big.NewInt(1)
+	check(header, errors.New("invalid baseFee"))
 }
 
 func TestVerifySeal(t *testing.T) {
-	chain, engine := newBlockChain(1)
-	defer engine.Stop()
+	ctx := newTestContext(1, nil, nil)
+	chain, engine := ctx.chain, ctx.engine
+	defer ctx.Cleanup()
 
 	genesis := chain.Genesis()
 
@@ -432,8 +411,9 @@ func TestVerifySeal(t *testing.T) {
 }
 
 func TestVerifyHeaders(t *testing.T) {
-	chain, engine := newBlockChain(1)
-	defer engine.Stop()
+	ctx := newTestContext(1, nil, nil)
+	chain, engine := ctx.chain, ctx.engine
+	defer ctx.Cleanup()
 
 	genesis := chain.Genesis()
 
@@ -747,11 +727,17 @@ func makeSnapshotTestConfigItems() []interface{} {
 	}
 }
 
-func makeFakeStakingInfo(blockNumber uint64, keys []*ecdsa.PrivateKey, amounts []uint64) *reward.StakingInfo {
-	stakingInfo := &reward.StakingInfo{
-		BlockNum: blockNumber,
+// Set StakingInfo with given amount for nodeKeys. If amounts == nil, set to 0 amounts.
+// Returns the original (old) StakingManager. Call `reward.SetTestStakingManager(oldStakingManager)`
+func setTestStakingInfo(amounts []uint64) *reward.StakingManager {
+	if amounts == nil {
+		amounts = make([]uint64, len(nodeKeys))
 	}
-	for idx, key := range keys {
+
+	stakingInfo := &reward.StakingInfo{
+		BlockNum: 0,
+	}
+	for idx, key := range nodeKeys {
 		addr := crypto.PubkeyToAddress(key.PublicKey)
 
 		pk, _ := crypto.GenerateKey()
@@ -762,7 +748,11 @@ func makeFakeStakingInfo(blockNumber uint64, keys []*ecdsa.PrivateKey, amounts [
 		stakingInfo.CouncilStakingAmounts = append(stakingInfo.CouncilStakingAmounts, amounts[idx])
 		stakingInfo.CouncilRewardAddrs = append(stakingInfo.CouncilRewardAddrs, rewardAddr)
 	}
-	return stakingInfo
+
+	// Save old StakingManager, overwrite to the fake one.
+	oldStakingManager := reward.GetStakingManager()
+	reward.SetTestStakingManagerWithStakingInfoCache(stakingInfo)
+	return oldStakingManager
 }
 
 func toAddressList(validators []istanbul.Validator) []common.Address {
@@ -810,9 +800,9 @@ func TestSnapshot_Validators_AfterMinimumStakingVotes(t *testing.T) {
 		demoted    []int
 	}
 	type testcase struct {
-		stakingInfo []uint64
-		votes       []vote
-		expected    []expected
+		stakingAmounts []uint64
+		votes          []vote
+		expected       []expected
 	}
 
 	testcases := []testcase{
@@ -896,13 +886,7 @@ func TestSnapshot_Validators_AfterMinimumStakingVotes(t *testing.T) {
 
 	for _, tc := range testcases {
 		chain, engine := newBlockChain(4, configItems...)
-
-		// set old staking manager after finishing this test.
-		oldStakingManager := reward.GetStakingManager()
-
-		// set new staking manager with the given staking information.
-		stakingInfo := makeFakeStakingInfo(0, nodeKeys, tc.stakingInfo)
-		reward.SetTestStakingManagerWithStakingInfoCache(stakingInfo)
+		oldStakingManager := setTestStakingInfo(tc.stakingAmounts)
 
 		var previousBlock, currentBlock *types.Block = nil, chain.Genesis()
 
@@ -1092,13 +1076,7 @@ func TestSnapshot_Validators_BasedOnStaking(t *testing.T) {
 			configItems = append(configItems, governanceMode("single"))
 		}
 		chain, engine := newBlockChain(testNum, configItems...)
-
-		// set old staking manager after finishing this test.
-		oldStakingManager := reward.GetStakingManager()
-
-		// set new staking manager with the given staking information.
-		stakingInfo := makeFakeStakingInfo(0, nodeKeys, tc.stakingAmounts)
-		reward.SetTestStakingManagerWithStakingInfoCache(stakingInfo)
+		oldStakingManager := setTestStakingInfo(tc.stakingAmounts)
 
 		block := makeBlockWithSeal(chain, engine, chain.Genesis())
 		_, err := chain.InsertChain(types.Blocks{block})
@@ -1266,10 +1244,7 @@ func TestSnapshot_Validators_AddRemove(t *testing.T) {
 	for _, tc := range testcases {
 		// Create test blockchain
 		chain, engine := newBlockChain(4, configItems...)
-
-		oldStakingManager := reward.GetStakingManager()
-		stakingInfo := makeFakeStakingInfo(0, nodeKeys, stakes)
-		reward.SetTestStakingManagerWithStakingInfoCache(stakingInfo)
+		oldStakingManager := setTestStakingInfo(stakes)
 
 		// Backup the globals. The globals `nodeKeys` and `addrs` will be
 		// modified according to validator change votes.
@@ -1346,6 +1321,9 @@ func TestSnapshot_Writable(t *testing.T) {
 	configItems = append(configItems, governanceMode("single"))
 	configItems = append(configItems, blockPeriod(0)) // set block period to 0 to prevent creating future block
 	chain, engine := newBlockChain(1, configItems...)
+	defer engine.Stop()
+	oldStakingManager := setTestStakingInfo(nil)
+	defer reward.SetTestStakingManager(oldStakingManager)
 
 	// add votes and insert voted blocks
 	var (
@@ -1603,6 +1581,7 @@ func TestGovernance_Votes(t *testing.T) {
 	configItems = append(configItems, blockPeriod(0)) // set block period to 0 to prevent creating future block
 	for _, tc := range testcases {
 		chain, engine := newBlockChain(1, configItems...)
+		oldStakingManager := setTestStakingInfo(nil)
 
 		// test initial governance items
 		assert.Equal(t, uint64(3), engine.governance.CurrentParams().Epoch())
@@ -1646,6 +1625,7 @@ func TestGovernance_Votes(t *testing.T) {
 			assert.Equal(t, item.value, items[item.key])
 		}
 
+		reward.SetTestStakingManager(oldStakingManager)
 		engine.Stop()
 	}
 }
@@ -1693,10 +1673,7 @@ func TestGovernance_ReaderEngine(t *testing.T) {
 	for _, tc := range testcases {
 		// Create test blockchain
 		chain, engine := newBlockChain(4, configItems...)
-
-		oldStakingManager := reward.GetStakingManager()
-		stakingInfo := makeFakeStakingInfo(0, nodeKeys, stakes)
-		reward.SetTestStakingManagerWithStakingInfoCache(stakingInfo)
+		oldStakingManager := setTestStakingInfo(stakes)
 
 		var previousBlock, currentBlock *types.Block = nil, chain.Genesis()
 
@@ -1868,6 +1845,7 @@ func TestChainConfig_ReadFromDBAfterVotes(t *testing.T) {
 	configItems = append(configItems, blockPeriod(0)) // set block period to 0 to prevent creating future block
 	for _, tc := range testcases {
 		chain, engine := newBlockChain(1, configItems...)
+		oldStakingManager := setTestStakingInfo(nil)
 
 		// test initial governance items
 		assert.Equal(t, uint64(25000000000), chain.Config().Governance.KIP71.LowerBoundBaseFee)
@@ -1912,6 +1890,7 @@ func TestChainConfig_ReadFromDBAfterVotes(t *testing.T) {
 			assert.Error(t, nil)
 		}
 
+		reward.SetTestStakingManager(oldStakingManager)
 		engine.Stop()
 	}
 }
