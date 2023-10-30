@@ -88,6 +88,10 @@ var (
 	errEmptyCommittedSeals = errors.New("zero committed seals")
 	// errMismatchTxhashes is returned if the TxHash in header is mismatch.
 	errMismatchTxhashes = errors.New("mismatch transactions hashes")
+	// errNoBlsKey is returned if the BLS secret key is not configured.
+	errNoBlsKey = errors.New("bls key not configured")
+	// errInvalidRandao is returned if the Randao fields randomReveal or mixHash are invalid.
+	errInvalidRandao = errors.New("invalid randao fields")
 )
 
 var (
