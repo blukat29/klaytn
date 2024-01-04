@@ -21,26 +21,41 @@
 /*
 Package api implements the general Klaytn API functions.
 
-Overview of api package
+# Overview of api package
 
 This package provides various APIs to access the data of the Klaytn node.
 Remote users can interact with Klyatn by calling these APIs instead of IPC.
-APIs are grouped by access modifiers (public or private) and namespaces (klay, txpool, debug and personal).
+APIs are grouped by access modifiers (public or private) and namespaces (eth, klay, txpool, debug, personal).
 
-Source Files
+Public eth_ APIs
+  - api_ethereum.go: Ethereum compatible APIs (e.g. eth_getBlockByNumber)
 
-  - addrlock.go                    : implements Addrlocker which prevents another tx getting the same nonce through API.
-  - api_private_account.go         : provides private APIs to access accounts managed by the node.
-  - api_private_debug.go           : provides private APIs exposed over the debugging node.
-  - api_public_account.go          : provides public APIs to access accounts managed by the node.
-  - api_public_blockchain.go       : provides public APIs to access the Klaytn blockchain.
-  - api_public_cypress.go          : provides public APIs to return specific information of Klaytn Cypress network.
-  - api_public_debug.go            : provides public APIs exposed over the debugging node.
-  - api_public_klay.go             : provides public APIs to access Klaytn related data.
-  - api_public_net.go              : provides public APIs to offer network related RPC methods.
-  - api_public_transaction_pool.go : provides public APIs having "klay" namespace to access transaction pool data.
-  - api_public_tx_pool.go          : provides public APIs having "txpool" namespace to access transaction pool data.
-  - backend.go                     : provides the common API services.
-  - tx_args.go                     : provides API argument structures and functions.
+Private personal_ APIs
+  - api_private_account.go: Accounts managed by the node (e.g. personal_unlockAccount)
+
+Public klay_ APIs
+  - api_public_account.go: Accounts managed by the node (e.g. klay_accounts)
+  - api_public_blockchain.go: Block data (e.g. klay_getBlockByNumber)
+  - api_public_cypress.go: Cypress credit contract (e.g. klay_getCypressCredit)
+  - api_public_klay.go: Klaytn specific data (e.g. klay_gasPrice)
+  - api_public_transaction_pool.go: Transaction data (e.g. klay_getTransactionByHash)
+
+Private debug_ APIs
+  - api_private_debug.go: Debug data (e.g. debug_setHead, debug_chaindbProperty)
+
+Public debug_ APIs
+  - api_public_debug.go: Debug data (e.g. debug_getBlockRlp)
+  - Note that debug_ APIs are also defined in other packages including api/debug, node/cn, and node/cn/tracers
+
+Public net_ APIs
+  - api_public_net.go: P2P network related data (e.g. net_peerCount)
+
+Public txpool_ APIs
+  - api_public_tx_pool.go: Transaction pool related data (e.g. txpool_status)
+
+Helper functions
+  - addrlock.go: Addrlocker which prevents another tx getting the same nonce through API
+  - backend.go: common API services
+  - tx_args.go: common API argument types
 */
 package api
