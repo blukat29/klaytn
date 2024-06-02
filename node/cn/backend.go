@@ -587,13 +587,14 @@ func (s *CN) APIs() []rpc.API {
 	publicDownloaderAPI := downloader.NewPublicDownloaderAPI(s.protocolManager.Downloader(), s.eventMux)
 	privateDownloaderAPI := downloader.NewPrivateDownloaderAPI(s.protocolManager.Downloader())
 
-	ethAPI := api.NewEthereumAPI()
-	ethAPI.SetPublicKaiaAPI(publicKaiaAPI)
-	ethAPI.SetPublicBlockChainAPI(publicBlockChainAPI)
-	ethAPI.SetPublicTransactionPoolAPI(publicTransactionPoolAPI)
-	ethAPI.SetPublicAccountAPI(publicAccountAPI)
-	ethAPI.SetPublicFilterAPI(publicFilterAPI)
-	ethAPI.SetGovernanceAPI(governanceAPI)
+	ethAPI := api.NewEthereumAPI(
+		publicFilterAPI,
+		publicKaiaAPI,
+		publicBlockChainAPI,
+		publicTransactionPoolAPI,
+		publicAccountAPI,
+		governanceAPI,
+	)
 
 	// Append all the local APIs and return
 	apis = append(apis, []rpc.API{
