@@ -99,6 +99,8 @@ func (r *serviceRegistry) registerName(name string, rcvr interface{}) error {
 
 // callback returns the callback corresponding to the given RPC method name.
 func (r *serviceRegistry) callback(method string) *callback {
+	reqMethod := method
+
 	elem := strings.SplitN(method, serviceMethodSeparator, 2)
 	if len(elem) != 2 {
 		return nil
@@ -118,11 +120,15 @@ func (r *serviceRegistry) callback(method string) *callback {
 		namespace = "kaia"
 	}
 
-	return r.services[namespace].callbacks[method]
+	cb := r.services[namespace].callbacks[method]
+	logger.Trace("lookup callback", "method", reqMethod, "ok", cb != nil)
+	return cb
 }
 
 // subscription returns a subscription callback in the given service.
 func (r *serviceRegistry) subscription(service, name string) *callback {
+	reqMethod := service + "_" + name
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -130,7 +136,9 @@ func (r *serviceRegistry) subscription(service, name string) *callback {
 		service = "kaia"
 	}
 
-	return r.services[service].subscriptions[name]
+	cb := r.services[service].subscriptions[name]
+	logger.Trace("lookup subscription", "method", reqMethod, "ok", cb != nil)
+	return cb
 }
 
 // suitableCallbacks iterates over the methods of the given type. It determines if a method
